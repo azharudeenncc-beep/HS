@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Site HSE Dashboard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: sticky control bar, tab rail, then summary tiles before charts before registers (site-board reading order). */
+:root{
+  --bg:#f2f5f4; --surface:#ffffff; --surface-2:#f7f9f8; --ink:#14201c; --muted:#56665f; --faint:#7d8c86;
+  --line:#dce3e0; --grid:#e8edea; --accent:#0f6e55; --accent-ink:#ffffff; --accent-soft:#e1f1ec;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --closed:#b9c4bf;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --good-bg:#e3f4e3; --warn-bg:#fff3d6; --serious-bg:#fde8df; --crit-bg:#fbe3e3; --info-bg:#e5eefb; --info-ink:#1f5fae;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1412; --surface:#161e1b; --surface-2:#1b2521; --ink:#e6eeea; --muted:#9fb0a9; --faint:#7b8c85;
+  --line:#2a3631; --grid:#25302c; --accent:#3fbf95; --accent-ink:#06130e; --accent-soft:#16352b;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --closed:#4a5752;
+  --good-bg:#14301a; --warn-bg:#3a2e0e; --serious-bg:#3b2219; --crit-bg:#3d1b1b; --info-bg:#172a42; --info-ink:#8ab8f2;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1412; --surface:#161e1b; --surface-2:#1b2521; --ink:#e6eeea; --muted:#9fb0a9; --faint:#7b8c85;
+  --line:#2a3631; --grid:#25302c; --accent:#3fbf95; --accent-ink:#06130e; --accent-soft:#16352b;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --closed:#4a5752;
+  --good-bg:#14301a; --warn-bg:#3a2e0e; --serious-bg:#3b2219; --crit-bg:#3d1b1b; --info-bg:#172a42; --info-ink:#8ab8f2;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--body);margin:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:1320px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num,td.n,.mono{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12.5px}
+
+/* bar */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--surface);border-bottom:1px solid var(--line)}
+.bar .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding-block:10px}
+.bar .wrap.tw{padding-block:0}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto;min-width:0}
+.brand b{font:800 21px/1 var(--display);font-stretch:78%;letter-spacing:.01em;text-transform:uppercase}
+.brand span{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.ctl input,.ctl select{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:5px 8px;color:var(--ink);font-size:13px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:7px 12px;cursor:pointer;font-weight:500;font-size:13px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn[disabled]{opacity:.5;cursor:default}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1 1 100%;min-width:0}
+.tabs::-webkit-scrollbar{display:none}
+.tabs a{padding:10px 12px 9px;color:var(--muted);text-decoration:none;font-weight:500;font-size:13px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs a .cnt{font:500 11px var(--mono);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:0 6px;margin-left:5px}
+.tabs a .cnt.alert{background:var(--crit-bg);border-color:transparent;color:var(--crit)}
+
+main{padding-block:18px 40px;display:grid;gap:22px}
+.banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 14px;border-radius:var(--r);background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);font-size:13px}
+.banner b{font-weight:600}
+.meta{display:flex;flex-wrap:wrap;gap:6px 8px;font-size:12px;color:var(--muted);align-items:center}
+.chip{display:inline-flex;gap:6px;align-items:center;max-width:100%;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:20px;padding:2px 10px;font-size:12px;white-space:nowrap}
+.chip i{font-style:normal;color:var(--faint);overflow:hidden;text-overflow:ellipsis;min-width:0}
+h2{font:700 13px/1 var(--display);font-stretch:85%;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+h2 small{font:400 12px var(--body);text-transform:none;letter-spacing:0;color:var(--faint);margin-left:8px}
+section{min-width:0}
+
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px 12px 16px;position:relative;display:grid;gap:2px;align-content:start;text-align:left}
+.tile::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 2px 2px 0;background:var(--stripe,var(--line))}
+.tile[data-s="crit"]{--stripe:var(--crit)} .tile[data-s="warn"]{--stripe:var(--warn)} .tile[data-s="good"]{--stripe:var(--good)} .tile[data-s="info"]{--stripe:var(--s1)}
+button.tile{cursor:pointer;font:inherit;color:inherit}
+button.tile:hover{border-color:var(--accent)}
+.tile .l{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font:750 34px/1.05 var(--display);font-stretch:72%;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.tile .v small{font:500 15px var(--body);color:var(--muted);margin-left:4px}
+.tile .s{font-size:12px;color:var(--muted)}
+.delta{font:500 11.5px var(--mono);padding:1px 6px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line)}
+
+/* charts */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px 12px;min-width:0}
+.card h3{margin:0 0 2px;font:600 14px var(--body)}
+.card p.sub{margin:0 0 10px;color:var(--faint);font-size:12px}
+.cv{position:relative;height:250px}
+.cv.tall{height:300px}
+
+/* filters + tables */
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filters input[type=search]{flex:1 1 220px;min-width:0}
+.filters input,.filters select{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 9px;font-size:13px;max-width:100%}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{position:sticky;top:0;background:var(--surface-2);text-align:left;font-weight:600;font-size:11.5px;letter-spacing:.03em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;user-select:none}
+th[aria-sort="ascending"]::after{content:" ▲";font-size:9px} th[aria-sort="descending"]::after{content:" ▼";font-size:9px}
+td{padding:7px 10px;border-bottom:1px solid var(--grid);vertical-align:top}
+td.n{text-align:right;white-space:nowrap}
+td.d{white-space:nowrap}
+td.desc{min-width:260px;max-width:520px}
+tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--surface-2)}
+.rowcount{font-size:12px;color:var(--faint);margin-top:6px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:10px;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-good{background:var(--good-bg);color:var(--good)} .p-warn{background:var(--warn-bg);color:color-mix(in srgb,var(--warn) 55%,var(--ink))}
+.p-serious{background:var(--serious-bg);color:var(--serious)} .p-crit{background:var(--crit-bg);color:var(--crit)}
+.p-info{background:var(--info-bg);color:var(--info-ink)} .p-mute{background:var(--surface-2);color:var(--muted)}
+.age{font:600 12.5px var(--mono)}
+.age.a60{color:var(--crit)} .age.a30{color:var(--serious)}
+.tag{font:600 10.5px var(--mono);padding:1px 5px;border-radius:4px;background:var(--surface-2);border:1px solid var(--line)}
+
+/* checks */
+.checks{display:grid;gap:8px}
+.check{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:start}
+.check .c{font:750 22px/1 var(--display);font-stretch:75%;min-width:38px;text-align:right}
+.check .t{font-weight:600} .check .f{grid-column:2/4;color:var(--muted);font-size:12.5px}
+.check details{grid-column:2/4;font-size:12px;color:var(--muted)} .check summary{cursor:pointer;color:var(--accent)}
+.check ul{margin:6px 0 0;padding-left:18px;columns:2 280px}
+
+.set{display:grid;gap:16px}
+.setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px}
+.fld{display:grid;gap:4px;font-size:13px;min-width:0}
+.fld span{font-weight:600}
+.fld small{color:var(--faint);font-size:12px}
+.fld input,.fld textarea{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;font:13px var(--body);color:var(--ink);width:100%;resize:vertical}
+.foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
+.drop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(2px)}
+.drop div{border:2px dashed var(--accent);border-radius:12px;padding:40px 48px;background:var(--surface);text-align:center;font:700 20px var(--display);font-stretch:85%;max-width:calc(100% - 32px)}
+.drop div span{display:block;font:400 13px var(--body);color:var(--muted);margin-top:6px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);font-size:13px;max-width:min(640px,calc(100% - 32px));white-space:pre-line;box-shadow:0 6px 24px rgb(0 0 0 / .2)}
+.empty{padding:30px;text-align:center;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:var(--r)}
+@media (max-width:640px){.brand span{display:none}.tile .v{font-size:30px}.cv{height:220px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media print{.bar .ctl,.bar .btn,.tabs,.foot,.filters,.banner{display:none!important}.bar{position:static}.card,.tile{break-inside:avoid}}
+</style>
+
+<header class="bar">
+  <div class="wrap">
+    <div class="brand"><b id="brandName">Site HSE</b><span id="subtitle"></span></div>
+    <label class="ctl" for="rpt">Report date <input type="date" id="rpt"></label>
+    <label class="ctl" for="per">Period <select id="per"><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label>
+    <button class="btn" id="loadBtn" type="button">Load trackers</button>
+    <button class="btn primary" id="xlsBtn" type="button">Download client Excel</button>
+    <button class="btn" id="printBtn" type="button" hidden>Print / PDF</button>
+    <input type="file" id="file" multiple accept=".xlsx,.xlsm,.xls,.xlsb" hidden>
+  </div>
+  <div class="wrap tw"><nav class="tabs" id="tabs" aria-label="Views"></nav></div>
+</header>
+<div class="wrap"><main id="view"></main>
+  <div class="foot">
+    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span>
+    <button class="btn" id="clearBtn" type="button">Clear stored data</button>
+  </div>
+</div>
+<div class="drop" id="drop" hidden><div>Drop tracker files<span>NCR / SOR / Stop Work tracker and the contractor incident log</span></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   CONFIGURATION - edit these lists as the project evolves
+   ===================================================================== */
+// Project details are entered in the Settings tab and kept in this browser only.
+const SETTINGS_KEY = "hse-dash-settings";
+const DEFAULT_SETTINGS = { name: "", contract: "", contractor: "", consultant: "", earliestIssue: "2025-01-01", people: "", categories: "" };
+const PROJECT = Object.assign({}, DEFAULT_SETTINGS, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch (e) { return {}; } })());
+
+// Header text (any case/spacing) -> field. First exact match wins, then "starts with".
+const DATASETS = {
+  NCR: { label: "NCR", key: "descriptionofncr", required: "ref", fields: {
+    category: ["category"], severity: ["ncrseverity", "severity"], ref: ["ncr", "ncrno", "ncrreference"], desc: ["descriptionofncr"],
+    issue: ["issuedate"], raisedBy: ["raisedby"], respReq: ["responserequiredonorbefore"], closure: ["finalclosuredate"],
+    status: ["status"], ontime: ["overdue/ontime"], remarks: ["remarks"] } },
+  SOR: { label: "SOR", key: "descriptionofsor", required: "ref", fields: {
+    category: ["category"], ref: ["sor", "sorno", "sorreference"], desc: ["descriptionofsor"], issue: ["issuedate"],
+    raisedBy: ["raisedby"], respReq: ["responserequiredonorbefore"], closure: ["finalclosuredate"],
+    status: ["status"], ontime: ["overdue/ontime"], remarks: ["remarks"] } },
+  SWN: { label: "Stop Work", key: "descriptionofstopworknotice", required: "ref", fields: {
+    ref: ["documentreference"], desc: ["descriptionofstopworknotice"], issue: ["issuedate"], raisedBy: ["raisedby"],
+    respReq: ["responserequiredonorbefore"], respRecv: ["responsereceivedon"], closure: ["~returnedto", "~respondedandreturned"], status: ["status"],
+    contractorRef: ["~gencorrref", "contractorref", "contractorreply"], remarks: ["remarks"] } },
+  INC: { label: "Incident log", key: "dateofincident", required: "type", fields: {
+    date: ["dateofincident"], contractor: ["contractor"], severity: ["actualincidentseverity"], hipo: ["highpotential"],
+    type: ["incidenttype"], desc: ["shortdescriptionofincident"], injury: ["typeofinjury"], body: ["injuredpartofbody"],
+    category: ["summaryincidentcategory"], rwd: ["no.restrictedworkdays"], lwd: ["no.lostworkdays"], eirc: ["eircheld"],
+    suspended: ["worksuspended/stopped"], tbt: ["contractortoolboxtalkconducted"], lessons: ["contractorlessonslearned"],
+    status: ["incidentstatusclosed/open", "incidentstatus"] } },
+};
+// Extra name / category corrections come from the Settings tab ("typed = reported", one per line).
+const parseMap = t => Object.fromEntries(String(t || "").split(/\n/).map(l => l.split("=")).filter(p => p.length === 2 && p[0].trim() && p[1].trim()).map(([a, b]) => [a.trim().toLowerCase(), b.trim()]));
+let PEOPLE_MAP = parseMap(PROJECT.people);
+const BASE_CATEGORY_MAP = { "fall from hieght (person)": "Fall from Height (Person)", "wah": "Work at Height (unclassified)" };
+let INC_CATEGORY_MAP = Object.assign({}, BASE_CATEGORY_MAP, parseMap(PROJECT.categories));
+const STD_CATEGORIES = ["Asset Damage","Confined Space Incident","Electrical Contact (Person)","Excavation Collapse","Exposure to Harmful Substance","Exposure to Noise","Exposure to Vibration","Fall From Height (Object)","Fall from Height (Person)","Fire","Health and Hygiene","Illness","Injury","Lifting Equipment","Lifting Incident (Other)","Manual Handling","Other","Person Hit Against","Person Hit By","Plant Damage","Plant People Interface","Plant Related Incident (Other)","Road / Traffic Incident (Public Highway)","Slip Trip and Fall","Spillage / Leak","Structural Collapse","Substance Related Incident","Utility Damage","Vehicle Related Incident (Within Site Boundary)","Working Platforms","Non Work Related Deaths (NADs)","Work at Height (unclassified)","Barricades and Fencing","Emergency Response"];
+const TYPE_GROUPS = { "near miss": "Near Miss", "first aid case": "First Aid", "medical treatment case": "Recordable", "restricted work case": "Recordable",
+  "lost workday case": "Recordable", "lost time injury": "Recordable", "fatality": "Recordable", "occupational illnesses": "Recordable", "vehicle incident (injuries)": "Recordable",
+  "equipment / property damage": "Property / Equipment", "fire incident (no injuries)": "Property / Equipment", "vehicle incident (no injuries)": "Property / Equipment",
+  "dangerous occurrence": "Other", "environmental incident": "Other", "non-occupational injury": "Other", "non-occupational fatality": "Other", "not applicable": "Other" };
+const EVENT_GROUPS = ["Near Miss", "Recordable", "Property / Equipment", "First Aid", "Other"];
+const SWN_THEMES = [["Lifting / Cranes", ["lift", "crane", "mast", "rigging"]], ["Work at Height", ["height", "wah", "scaffold", "edge"]],
+  ["RAMS / Permits", ["rams", "jsa", "permit"]], ["Excavation", ["excavat", "trench"]], ["Environmental", ["dust", "waste", "spill", "environment"]],
+  ["Storage / Housekeeping", ["storage", "laydown", "warehouse", "housekeeping"]]];
+const STATUS = { OPEN: ["Awaiting response", "p-warn"], REJECTED: ["Rejected", "p-crit"], PENDING: ["Under review", "p-info"],
+  RESPONDED: ["Responded", "p-info"], CLOSED: ["Closed", "p-good"], TERMINATED: ["Terminated", "p-mute"] };
+const KNOWN_STATUS = Object.keys(STATUS);
+const BUCKETS = ["0-7 days", "8-30 days", "31-60 days", ">60 days"];
+
+/* =====================================================================
+   Helpers
+   ===================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const DAY = 864e5, MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+const norm = v => v == null ? "" : String(v).toLowerCase().replace(/[\s :]/g, "");
+const txt = v => v == null ? "" : String(v).replace(/ /g, " ").replace(/\s+/g, " ").trim();
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const title = s => txt(s).toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase());
+function mk(y, m, d) { if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31 && y > 1990 && y < 2100)) return null; const r = new Date(y, m - 1, d); return r.getMonth() === m - 1 ? r : null; }
+function toDate(v) {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  if (typeof v === "number") { if (v < 20000 || v > 80000) return null; const d = new Date(Math.round((v - 25569) * DAY)); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
+  const s = String(v).trim().toLowerCase().replace(/[\/.]/g, "-").replace(/\s+/g, "").replace(/-+/g, "-");
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return mk(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})-([a-z]{3,9}|\d{1,2})-(\d{2,4})$/);
+  if (m) { const mo = /\d/.test(m[2]) ? +m[2] : MONTHS.indexOf(m[2].slice(0, 3)) + 1; let y = +m[3]; if (y < 100) y += 2000; return mk(y, mo, +m[1]); }
+  return null;
+}
+const iso = d => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
+const fromIso = s => { if (!s) return null; const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmt = (d, o = { year: "2-digit" }) => d ? [String(d.getDate()).padStart(2, "0"), MON[d.getMonth()], o.year === "numeric" ? d.getFullYear() : o.year ? String(d.getFullYear()).slice(2) : ""].filter(Boolean).join(" ") : "";
+const fmtL = d => fmt(d, { day: "2-digit", month: "short", year: "numeric" });
+const days = (a, b) => Math.round((a - b) / DAY);
+const addD = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const inR = (d, a, b) => d && d >= a && d <= b;
+const pct = (a, b) => b ? a / b : 0;
+const P = n => Math.round(n * 100) + "%";
+function person(v) { const t = txt(v); if (!t) return ""; return PEOPLE_MAP[t.toLowerCase()] || title(t); }
+function canonCat(v) { const t = txt(v); if (!t) return "(blank)"; const k = t.toLowerCase(); if (INC_CATEGORY_MAP[k]) return INC_CATEGORY_MAP[k]; if (k.startsWith("vehicle related incident (within")) return "Vehicle Related Incident (Within Site Boundary)"; const hit = STD_CATEGORIES.find(c => c.toLowerCase() === k); return hit || t; }
+function swnTheme(s) { const t = String(s || "").toLowerCase(); for (const [name, words] of SWN_THEMES) if (words.some(w => t.includes(w))) return name; return "Other"; }
+function countBy(arr, fn) { const m = new Map(); for (const x of arr) { const k = fn(x); m.set(k, (m.get(k) || 0) + 1); } return m; }
+function store(k, v) { try { if (v === undefined) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function load(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+let toastT; function toast(msg, ms = 4200) { let el = $(".toast"); if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); document.body.appendChild(el); } el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, ms); }
+
+/* =====================================================================
+   Reading tracker files
+   ===================================================================== */
+function findHeader(rows, key) { for (let r = 0; r < Math.min(40, rows.length); r++) if ((rows[r] || []).some(c => norm(c) === key)) return r; return -1; }
+function headerDate(rows, hr) {
+  for (let r = 0; r < hr; r++) { const row = rows[r] || [];
+    for (let c = 0; c < row.length; c++) if (norm(row[c]) === "date") for (let k = c + 1; k < row.length; k++) { const d = typeof row[k] === "number" || row[k] instanceof Date ? toDate(row[k]) : null; if (d) return d; } }
+  return null;
+}
+function extract(rows, hr, ds) {
+  const hdr = (rows[hr] || []).map(norm), col = {}, missing = [];
+  for (const [f, aliases] of Object.entries(ds.fields)) {
+    let i = -1;
+    for (const a of aliases) { if (a.startsWith("~")) continue; i = hdr.indexOf(a); if (i >= 0) break; }
+    if (i < 0) for (const a of aliases) { i = a.startsWith("~") ? hdr.findIndex(h => h && h.includes(a.slice(1))) : hdr.findIndex(h => h && h.startsWith(a)); if (i >= 0) break; }
+    if (i >= 0) col[f] = i; else missing.push(f);
+  }
+  const out = [];
+  if (col[ds.required] == null) return { rows: out, missing, error: `column for ${ds.required} not found` };
+  for (let r = hr + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const first = row.find(c => c != null && String(c).trim() !== "");
+    if (first != null && /^(template number|disclaimer|signatures?|received by)/i.test(String(first).trim())) break;
+    if (!txt(row[col[ds.required]])) continue;
+    const o = {}; for (const [f, i] of Object.entries(col)) o[f] = row[i] ?? null; out.push(o);
+  }
+  return { rows: out, missing, headerDate: headerDate(rows, hr) };
+}
+function parseWorkbook(wb, file) {
+  const found = {};
+  for (const name of wb.SheetNames) {
+    if (/dropdown|list|lookup|pivot/i.test(name)) continue;
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true });
+    for (const [k, ds] of Object.entries(DATASETS)) {
+      const hr = findHeader(rows, ds.key); if (hr < 0) continue;
+      const res = extract(rows, hr, ds); res.sheet = name; res.file = file;
+      if (!found[k] || res.rows.length > found[k].rows.length) found[k] = res;
+    }
+  }
+  return found;
+}
+
+/* =====================================================================
+   Cleaning into records
+   ===================================================================== */
+function cleanFindings(raw, ds) {
+  return raw.map(r => {
+    const status = txt(r.status).toUpperCase();
+    return { ref: txt(r.ref), category: txt(r.category).toUpperCase() || "(blank)", severity: ds === "NCR" ? (txt(r.severity) ? title(r.severity) : "Not graded") : "",
+      desc: txt(r.desc), issue: toDate(r.issue), closure: toDate(r.closure), respReq: toDate(r.respReq), raisedBy: person(r.raisedBy), raisedByRaw: txt(r.raisedBy),
+      status: status || "(blank)", onTime: /on\s*time/i.test(txt(r.ontime)), remarks: txt(r.remarks) };
+  });
+}
+function cleanSWN(raw) {
+  return raw.map(r => ({ ref: txt(r.ref), desc: txt(r.desc), issue: toDate(r.issue), closure: toDate(r.closure), respReq: toDate(r.respReq),
+    raisedBy: person(r.raisedBy), raisedByRaw: txt(r.raisedBy), status: txt(r.status).toUpperCase() || "(blank)", contractorRef: txt(r.contractorRef), theme: swnTheme(r.desc) }));
+}
+function cleanINC(raw) {
+  return raw.map(r => {
+    const type = txt(r.type), statusRaw = txt(r.status);
+    return { date: toDate(r.date), dateText: typeof r.date === "string" ? txt(r.date) : "", type, group: TYPE_GROUPS[type.toLowerCase()] || "Other", typeKnown: !!TYPE_GROUPS[type.toLowerCase()],
+      category: canonCat(r.category), categoryRaw: txt(r.category), desc: txt(r.desc), severity: txt(r.severity), hipo: /^y/i.test(txt(r.hipo)),
+      injury: txt(r.injury), body: txt(r.body), lostDays: typeof r.lwd === "number" ? r.lwd : 0, contractor: txt(r.contractor),
+      statusRaw, isOpen: statusRaw.toLowerCase() !== "closed", lessons: txt(r.lessons) };
+  });
+}
+const DATE_KEYS = ["issue", "closure", "respReq", "date"];
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const S = { data: { NCR: [], SOR: [], SWN: [], INC: [] }, meta: {}, rpt: null, period: 7, demo: false };
+const UI = { NCR: { q: "", st: "open", cat: "", who: "", sev: "", sort: ["age", -1] }, SOR: { q: "", st: "open", cat: "", who: "", sev: "", sort: ["age", -1] },
+  SWN: { q: "", st: "", sort: ["issue", -1] }, INC: { q: "", grp: "", cat: "", st: "", sort: ["date", -1] }, OPEN: { ds: "", sort: ["age", -1] } };
+
+function persist() {
+  const plain = JSON.parse(JSON.stringify({ data: S.data, meta: S.meta, rpt: iso(S.rpt), period: S.period, demo: S.demo }, (k, v) => v));
+  store("hse-dash-v1", plain);
+}
+function restore() {
+  const p = load("hse-dash-v1"); if (!p || !p.data) return false;
+  for (const k in p.data) for (const r of p.data[k]) for (const dk of DATE_KEYS) if (r[dk]) { const d = new Date(r[dk]); r[dk] = new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  for (const k in p.meta || {}) if (p.meta[k].headerDate) { const d = new Date(p.meta[k].headerDate); p.meta[k].headerDate = new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  Object.assign(S, { data: Object.assign({ NCR: [], SOR: [], SWN: [], INC: [] }, p.data), meta: p.meta || {}, rpt: fromIso(p.rpt), period: p.period || 7, demo: !!p.demo });
+  return true;
+}
+
+/* =====================================================================
+   Analysis
+   ===================================================================== */
+let A = null;
+function analyze() {
+  const rpt = S.rpt || new Date(), per = S.period;
+  const perStart = addD(rpt, -(per - 1)), prevStart = addD(perStart, -per), prevEnd = addD(perStart, -1);
+  const out = { rpt, per, perStart, prevStart, prevEnd };
+  for (const k of ["NCR", "SOR", "SWN"]) for (const r of S.data[k]) if (r.raisedByRaw != null) r.raisedBy = person(r.raisedByRaw);
+  for (const r of S.data.INC) if (r.categoryRaw != null) r.category = canonCat(r.categoryRaw);
+  for (const k of ["NCR", "SOR"]) {
+    const rows = S.data[k].map(r => { const isOpen = !(r.status === "CLOSED" || r.status === "TERMINATED"); const age = isOpen && r.issue ? days(rpt, r.issue) : null;
+      return Object.assign(r, { isOpen, age, bucket: age == null ? "" : age <= 7 ? BUCKETS[0] : age <= 30 ? BUCKETS[1] : age <= 60 ? BUCKETS[2] : BUCKETS[3],
+        toClose: r.issue && r.closure ? days(r.closure, r.issue) : null }); });
+    const closed = rows.filter(r => r.status === "CLOSED").length, term = rows.filter(r => r.status === "TERMINATED").length;
+    const tc = rows.filter(r => r.toClose != null);
+    out[k] = { rows, total: rows.length, open: rows.filter(r => r.isOpen).length, over30: rows.filter(r => r.age > 30).length,
+      major: rows.filter(r => r.isOpen && r.severity === "Major").length,
+      issuedPer: rows.filter(r => inR(r.issue, perStart, rpt)).length, issuedPrev: rows.filter(r => inR(r.issue, prevStart, prevEnd)).length,
+      closedPer: rows.filter(r => r.status === "CLOSED" && inR(r.closure, perStart, rpt)).length, closedPrev: rows.filter(r => r.status === "CLOSED" && inR(r.closure, prevStart, prevEnd)).length,
+      closeRate: pct(closed, rows.length - term), onTime: pct(rows.filter(r => r.onTime).length, rows.length),
+      avgClose: tc.length ? tc.reduce((s, r) => s + r.toClose, 0) / tc.length : 0,
+      buckets: BUCKETS.map(b => rows.filter(r => r.bucket === b).length) };
+  }
+  const swn = S.data.SWN.map(r => Object.assign(r, { isOpen: r.status !== "CLOSED", age: r.status !== "CLOSED" && r.issue ? days(rpt, r.issue) : null }));
+  out.SWN = { rows: swn, total: swn.length, open: swn.filter(r => r.isOpen).length, per: swn.filter(r => inR(r.issue, perStart, rpt)).length, prev: swn.filter(r => inR(r.issue, prevStart, prevEnd)).length };
+  const inc = S.data.INC;
+  const rec = inc.filter(r => r.group === "Recordable" && r.date).map(r => r.date);
+  const last = rec.length ? new Date(Math.max(...rec)) : null;
+  out.INC = { rows: inc, total: inc.length, nm: inc.filter(r => r.group === "Near Miss").length,
+    nmPer: inc.filter(r => r.group === "Near Miss" && inR(r.date, perStart, rpt)).length, nmPrev: inc.filter(r => r.group === "Near Miss" && inR(r.date, prevStart, prevEnd)).length,
+    rec: inc.filter(r => r.group === "Recordable").length, fa: inc.filter(r => r.group === "First Aid").length, hipo: inc.filter(r => r.hipo).length,
+    lost: inc.reduce((s, r) => s + (r.lostDays || 0), 0), open: inc.filter(r => r.isOpen).length, lastRec: last, sinceRec: last ? days(rpt, last) : null };
+  // months: 13 ending in report month
+  const m0 = new Date(rpt.getFullYear(), rpt.getMonth() - 12, 1);
+  out.months = Array.from({ length: 13 }, (_, i) => new Date(m0.getFullYear(), m0.getMonth() + i, 1));
+  out.mLabels = out.months.map(m => MONTHS[m.getMonth()].replace(/^./, c => c.toUpperCase()) + " " + String(m.getFullYear()).slice(2));
+  const eom = m => new Date(m.getFullYear(), m.getMonth() + 1, 0);
+  for (const k of ["NCR", "SOR"]) {
+    const rows = out[k].rows;
+    out[k].mIssued = out.months.map(m => rows.filter(r => inR(r.issue, m, eom(m))).length);
+    out[k].mClosed = out.months.map(m => rows.filter(r => r.status === "CLOSED" && inR(r.closure, m, eom(m))).length);
+    out[k].mOpen = out.months.map(m => { const e = eom(m); if (m > rpt) return null; const end = e > rpt ? rpt : e;
+      return rows.filter(r => r.issue && r.issue <= end && r.status !== "TERMINATED").length - rows.filter(r => r.status === "CLOSED" && r.closure && r.closure <= end).length; });
+  }
+  out.INC.mGroups = EVENT_GROUPS.map(g => out.months.map(m => inc.filter(r => r.group === g && inR(r.date, m, eom(m))).length));
+  out.checks = buildChecks(out);
+  return out;
+}
+
+function buildChecks(o) {
+  const C = [], add = (sev, label, items, fix) => C.push({ sev, label, items, fix });
+  const inc = S.data.INC, f = [...(o.NCR?.rows || []), ...(o.SOR?.rows || [])];
+  const start = fromIso(PROJECT.earliestIssue);
+  const refOf = r => r.ref || "(no reference)";
+  const incRef = r => `${r.dateText || fmt(r.date) || "no date"} · ${r.type} · ${r.desc.slice(0, 60)}`;
+  for (const k of Object.keys(DATASETS)) { const m = S.meta[k]; if (m && m.missing && m.missing.length) add("warn", `${DATASETS[k].label}: columns not found in the file`, m.missing, "Those fields are left blank. Check the tracker header names or update the column list in the app configuration."); }
+  add("warn", "Incident log: dates that could not be read", inc.filter(r => !r.date).map(incRef), "Type dates as real dates (dd/mm/yyyy).");
+  add("info", "Incident log: dates typed as text (converted)", inc.filter(r => r.dateText && r.date).map(r => `${r.dateText} → ${fmt(r.date)}`), "Read correctly, but ask the contractor to format the date column as Date.");
+  add("warn", "Incident log: status is not Closed or Open", inc.filter(r => !/^(closed|open)$/i.test(r.statusRaw)).map(r => `${r.statusRaw || "(blank)"} · ${incRef(r)}`), "Counted as open. Usually a column shift in recent rows: confirm with the contractor.");
+  add("warn", "Incident log: category not in the standard list", inc.filter(r => !STD_CATEGORIES.includes(r.category)).map(r => `${r.categoryRaw || "(blank)"} · ${incRef(r)}`), "Add a correction in Settings (typed = standard category).");
+  add("warn", "Incident log: incident type not recognised", inc.filter(r => !r.typeKnown).map(r => `${r.type || "(blank)"} · ${incRef(r)}`), "Counted as Other. Add the type to TYPE_GROUPS.");
+  add("warn", "NCR / SOR: no readable issue date", f.filter(r => !r.issue).map(refOf), "Enter the issue date in the tracker.");
+  add("warn", `NCR / SOR: issued before ${fmtL(start)}`, f.filter(r => r.issue && r.issue < start).map(r => `${refOf(r)} · ${fmt(r.issue)}`), "Probably a year typo. Correct it in the tracker.");
+  add("warn", "NCR / SOR: issue date after the report date", f.filter(r => r.issue && r.issue > o.rpt).map(r => `${refOf(r)} · ${fmt(r.issue)}`), "Check the report date or the tracker entry.");
+  add("warn", "NCR / SOR: closed without a final closure date", f.filter(r => r.status === "CLOSED" && !r.closure).map(refOf), "Needed for monthly close-outs and days to close.");
+  add("warn", "NCR / SOR: unrecognised status", f.filter(r => !KNOWN_STATUS.includes(r.status)).map(r => `${refOf(r)} · ${r.status}`), "Counted as open. Use the standard tracker statuses.");
+  add("warn", "NCR / SOR: raised-by name is blank", f.filter(r => !r.raisedBy).map(refOf), "Add the inspector name in the tracker.");
+  add("info", "NCR: severity not graded", (o.NCR?.rows || []).filter(r => r.severity === "Not graded").map(refOf), "Grade new NCRs so the Major count means something.");
+  return C;
+}
+
+/* =====================================================================
+   Charts
+   ===================================================================== */
+const LIGHT = { ink: "#14201c", muted: "#56665f", grid: "#e8edea", surface: "#ffffff", s: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"], closed: "#b9c4bf", crit: "#d03b3b" };
+function pal() { const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+  return { ink: g("--ink"), muted: g("--muted"), grid: g("--grid"), surface: g("--surface"), s: ["--s1", "--s2", "--s3", "--s4", "--s5"].map(g), closed: g("--closed"), crit: g("--crit") }; }
+Chart.defaults.font.family = '"IBM Plex Sans", system-ui, sans-serif';
+Chart.defaults.font.size = 12;
+function opts(p, { stacked = false, horizontal = false, legend = true, onClick } = {}) {
+  const ax = (grid) => ({ stacked, grid: { display: grid, color: p.grid, drawTicks: false }, border: { display: false }, ticks: { color: p.muted, padding: 6, precision: 0 } });
+  return { responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, indexAxis: horizontal ? "y" : "x",
+    interaction: { mode: horizontal ? "nearest" : "index", intersect: horizontal, axis: horizontal ? "y" : "x" },
+    plugins: { legend: { display: legend, position: "bottom", align: "start", labels: { color: p.muted, boxWidth: 10, boxHeight: 10, useBorderRadius: true, borderRadius: 2, padding: 14 } },
+      tooltip: { backgroundColor: p.ink, titleColor: p.surface, bodyColor: p.surface, padding: 10, cornerRadius: 4, boxPadding: 4 } },
+    scales: horizontal ? { x: ax(true), y: Object.assign(ax(false), { ticks: { color: p.ink, autoSkip: false } }) } : { x: ax(false), y: ax(true) },
+    onClick, onHover: onClick ? (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; } : undefined };
+}
+const bar = (label, data, color, extra = {}) => Object.assign({ type: "bar", label, data, backgroundColor: color, borderRadius: 4, borderSkipped: "start", maxBarThickness: 26, categoryPercentage: .72, barPercentage: .9 }, extra);
+const stackBar = (label, data, color, p) => ({ type: "bar", label, data, backgroundColor: color, borderColor: p.surface, borderWidth: 1, maxBarThickness: 30, borderRadius: 0 });
+
+const CFG = {
+  issuedClosed: (p, k) => ({ type: "bar", data: { labels: A.mLabels, datasets: [bar("Issued", A[k].mIssued, p.s[0]), bar("Closed", A[k].mClosed, p.s[2])] }, options: opts(p) }),
+  backlog: (p) => ({ type: "line", data: { labels: A.mLabels, datasets: [["NCR", A.NCR.mOpen, p.s[0]], ["SOR", A.SOR.mOpen, p.s[1]]].map(([l, d, c]) => ({ label: l + " open", data: d, borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0, spanGaps: false })) }, options: opts(p) }),
+  age: (p, onClick) => ({ type: "bar", data: { labels: BUCKETS, datasets: [bar("NCR", A.NCR.buckets, p.s[0]), bar("SOR", A.SOR.buckets, p.s[1])] }, options: opts(p, { onClick }) }),
+  events: (p) => ({ type: "bar", data: { labels: A.mLabels, datasets: EVENT_GROUPS.map((g, i) => stackBar(g, A.INC.mGroups[i], p.s[i], p)) }, options: opts(p, { stacked: true }) }),
+  topCats: (p, rows, onClick, n = 8) => { const m = [...countBy(rows, r => r.category)].sort((a, b) => b[1] - a[1]).slice(0, n);
+    return { type: "bar", data: { labels: m.map(x => x[0]), datasets: [bar("Events", m.map(x => x[1]), p.s[0])] }, options: opts(p, { horizontal: true, legend: false, onClick }) }; },
+  category: (p, k, onClick) => { const rows = A[k].rows; const cats = [...countBy(rows, r => r.category)].sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0]);
+    return { type: "bar", data: { labels: cats, datasets: [stackBar("Open", cats.map(c => rows.filter(r => r.category === c && r.isOpen).length), p.s[1], p), stackBar("Closed / terminated", cats.map(c => rows.filter(r => r.category === c && !r.isOpen).length), p.closed, p)] }, options: opts(p, { stacked: true, horizontal: true, onClick }) }; },
+  status: (p, k, onClick) => { const st = ["OPEN", "REJECTED", "PENDING", "RESPONDED"]; return { type: "bar", data: { labels: st.map(s => STATUS[s][0]), datasets: [bar("Open items", st.map(s => A[k].rows.filter(r => r.status === s).length), p.s[0])] }, options: opts(p, { horizontal: true, legend: false, onClick }) }; },
+  inspectors: (p) => { const all = [...A.NCR.rows, ...A.SOR.rows]; const top = [...countBy(all, r => r.raisedBy || "(blank)")].sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0]);
+    return { type: "bar", data: { labels: top, datasets: [stackBar("NCR", top.map(n => A.NCR.rows.filter(r => (r.raisedBy || "(blank)") === n).length), p.s[0], p), stackBar("SOR", top.map(n => A.SOR.rows.filter(r => (r.raisedBy || "(blank)") === n).length), p.s[1], p)] }, options: opts(p, { stacked: true, horizontal: true }) }; },
+  swnThemes: (p) => { const th = [...SWN_THEMES.map(t => t[0]), "Other"].filter(t => A.SWN.rows.some(r => r.theme === t));
+    return { type: "bar", data: { labels: th, datasets: [bar("Issued", th.map(t => A.SWN.rows.filter(r => r.theme === t).length), p.s[0]), bar("Still open", th.map(t => A.SWN.rows.filter(r => r.theme === t && r.isOpen).length), p.s[1])] }, options: opts(p, { horizontal: true }) }; },
+};
+const live = {};
+function draw(id, make) { const el = document.getElementById(id); if (!el) return; if (live[id]) live[id].destroy(); live[id] = new Chart(el, make(pal())); }
+function destroyAll() { for (const k in live) { live[k].destroy(); delete live[k]; } }
+
+/* =====================================================================
+   Views
+   ===================================================================== */
+const VIEWS = [["overview", "Overview"], ["ncr", "NCR"], ["sor", "SOR"], ["stop-work", "Stop Work"], ["incidents", "Incidents"], ["open-items", "Open Items"], ["checks", "Data Checks"], ["history", "History"], ["settings", "Settings"]];
+function route() { const h = location.hash.slice(1); return VIEWS.some(v => v[0] === h) ? h : "overview"; }
+function renderTabs() {
+  const cur = route(), nChecks = A.checks.filter(c => c.sev === "warn" && c.items.length).length;
+  const count = { ncr: A.NCR.open, sor: A.SOR.open, "stop-work": A.SWN.open, "open-items": A.NCR.open + A.SOR.open, checks: nChecks };
+  $("#tabs").innerHTML = VIEWS.map(([id, l]) => `<a href="#${id}" ${id === cur ? 'aria-current="page"' : ""}>${l}${count[id] != null && (id !== "checks" || nChecks) ? `<span class="cnt${id === "checks" ? " alert" : ""}">${count[id]}</span>` : ""}</a>`).join("");
+}
+function tile(l, v, s, st = "", go = "", unit = "") {
+  const inner = `<span class="l">${l}</span><span class="v">${v}${unit ? `<small>${unit}</small>` : ""}</span><span class="s">${s}</span>`;
+  return go ? `<button type="button" class="tile" data-s="${st}" data-go="${go}">${inner}</button>` : `<div class="tile" data-s="${st}">${inner}</div>`;
+}
+function delta(now, prev) { const d = now - prev; const sign = d > 0 ? "+" : d < 0 ? "−" : "±"; return `<span class="delta">${sign}${Math.abs(d)}</span> vs previous ${A.per} days (${prev})`; }
+function header() {
+  const src = Object.keys(DATASETS).filter(k => S.meta[k]).map(k => { const m = S.meta[k]; return `<span class="chip"><b>${DATASETS[k].label}</b> ${S.data[k].length}<i>${esc(m.file || "")}${m.headerDate ? " · " + fmt(m.headerDate) : ""}</i></span>`; }).join("");
+  const banner = S.demo ? `<div class="banner"><span><b>Demo data.</b> These figures are fictional examples. Load your NCR / SOR tracker and the contractor incident log to see the real position.</span><button class="btn" type="button" data-act="load">Load trackers</button></div>` : "";
+  return `${banner}<div class="meta"><span>Period <b>${fmt(A.perStart, { day: "2-digit", month: "short" })} – ${fmtL(A.rpt)}</b> (${A.per} days)</span>${src}</div>`;
+}
+
+function vOverview() {
+  const N = A.NCR, R = A.SOR, I = A.INC, W = A.SWN;
+  return `${header()}
+  <section><h2>This period<small>${fmt(A.perStart, { day: "2-digit", month: "short" })} – ${fmt(A.rpt, { day: "2-digit", month: "short" })}</small></h2><div class="tiles">
+    ${tile("NCRs issued", N.issuedPer, delta(N.issuedPer, N.issuedPrev), "info", "ncr")}
+    ${tile("SORs issued", R.issuedPer, delta(R.issuedPer, R.issuedPrev), "info", "sor")}
+    ${tile("NCRs / SORs closed", `${N.closedPer}<small>/</small>${R.closedPer}`, `Previous ${A.per} days: ${N.closedPrev} / ${R.closedPrev}`, "good")}
+    ${tile("Near misses reported", I.nmPer, delta(I.nmPer, I.nmPrev), "info", "incidents")}
+    ${tile("Stop work notices", W.per, delta(W.per, W.prev), W.per ? "warn" : "", "stop-work")}
+  </div></section>
+  <section><h2>Position at report date</h2><div class="tiles">
+    ${tile("Open NCRs", N.open, `${N.over30} open over 30 days · ${N.major} Major`, N.over30 ? "crit" : "good", "ncr")}
+    ${tile("Open SORs", R.open, `${R.over30} open over 30 days`, R.over30 ? "crit" : "good", "sor")}
+    ${tile("NCR close-out rate", P(N.closeRate), `Closed ÷ issued, excluding terminated · SOR ${P(R.closeRate)}`, N.closeRate >= .85 ? "good" : "warn")}
+    ${tile("Contractor 1st response on time", P(N.onTime), `NCRs answered within 7 days · SOR ${P(R.onTime)}`, N.onTime >= .8 ? "good" : N.onTime >= .5 ? "warn" : "crit")}
+    ${tile("Average days to close NCR", N.avgClose.toFixed(0), `SOR ${R.avgClose.toFixed(0)} days`, "", "", "days")}
+    ${tile("Days since last recordable", I.sinceRec == null ? "—" : I.sinceRec, I.lastRec ? `Last on ${fmtL(I.lastRec)} · ${I.rec} recordable, ${I.fa} first aid to date` : "No recordable injury in the log", I.sinceRec == null || I.sinceRec > 90 ? "good" : "warn", "incidents")}
+  </div></section>
+  <section><h2>Trends<small>last 13 months</small></h2><div class="grid2">
+    <div class="card"><h3>NCRs issued and closed</h3><p class="sub">Per month, by issue date and final closure date</p><div class="cv"><canvas id="c1" role="img" aria-label="NCRs issued and closed per month"></canvas></div></div>
+    <div class="card"><h3>SORs issued and closed</h3><p class="sub">Per month, by issue date and final closure date</p><div class="cv"><canvas id="c2" role="img" aria-label="SORs issued and closed per month"></canvas></div></div>
+    <div class="card"><h3>Open backlog at month end</h3><p class="sub">Issued to date minus closed to date (terminated excluded)</p><div class="cv"><canvas id="c3" role="img" aria-label="Open NCR and SOR backlog"></canvas></div></div>
+    <div class="card"><h3>How long open items have been open</h3><p class="sub">Days from issue to report date · click a bar to see the items</p><div class="cv"><canvas id="c4" role="img" aria-label="Open items by age"></canvas></div></div>
+    <div class="card"><h3>Incident log events per month</h3><p class="sub">Contractor incident and near-miss log, by event type</p><div class="cv"><canvas id="c5" role="img" aria-label="Events per month by type"></canvas></div></div>
+    <div class="card"><h3>Most frequent event categories</h3><p class="sub">All logged events to date</p><div class="cv"><canvas id="c6" role="img" aria-label="Top event categories"></canvas></div></div>
+  </div></section>`;
+}
+function afterOverview() {
+  draw("c1", p => CFG.issuedClosed(p, "NCR")); draw("c2", p => CFG.issuedClosed(p, "SOR")); draw("c3", CFG.backlog);
+  draw("c4", p => CFG.age(p, (e, els) => { if (!els.length) return; UI.OPEN.bucket = BUCKETS[els[0].index]; UI.OPEN.ds = els[0].datasetIndex ? "SOR" : "NCR"; location.hash = "open-items"; }));
+  draw("c5", CFG.events); draw("c6", p => CFG.topCats(p, A.INC.rows));
+}
+
+/* ---------- generic table ---------- */
+function table(id, cols, rows, st) {
+  const [sk, sd] = st.sort; const col = cols.find(c => c.k === sk) || cols[0];
+  const val = r => { const v = col.v ? col.v(r) : r[col.k]; return v instanceof Date ? +v : v; };
+  const sorted = [...rows].sort((a, b) => { const x = val(a), y = val(b); if (x == null || x === "") return 1; if (y == null || y === "") return -1; return (x > y ? 1 : x < y ? -1 : 0) * sd; });
+  const shown = sorted.slice(0, 600);
+  return `<div class="tablebox"><table id="${id}"><thead><tr>${cols.map(c => `<th scope="col" data-k="${c.k}" ${c.k === sk ? `aria-sort="${sd > 0 ? "ascending" : "descending"}"` : ""}>${c.l}</th>`).join("")}</tr></thead>
+  <tbody>${shown.map(r => `<tr>${cols.map(c => `<td class="${c.cls || ""}">${c.h ? c.h(r) : esc(r[c.k])}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" style="text-align:center;color:var(--muted);padding:24px">No items match these filters.</td></tr>`}</tbody></table></div>
+  <div class="rowcount">${rows.length} item${rows.length === 1 ? "" : "s"}${rows.length > shown.length ? ` · showing the first ${shown.length}` : ""}</div>`;
+}
+function wireSort(id, st) { const t = document.getElementById(id); if (!t) return; t.querySelectorAll("th").forEach(th => th.addEventListener("click", () => { const k = th.dataset.k; st.sort = st.sort[0] === k ? [k, -st.sort[1]] : [k, k === "age" || k === "issue" || k === "date" ? -1 : 1]; render(); })); }
+const pill = s => { const m = STATUS[s]; return m ? `<span class="pill ${m[1]}">${m[0]}</span>` : `<span class="pill p-mute">${esc(s)}</span>`; };
+const ageH = r => r.age == null ? "" : `<span class="age ${r.age > 60 ? "a60" : r.age > 30 ? "a30" : ""}">${r.age} d</span>`;
+const dH = k => r => fmt(r[k]);
+const sel = (id, label, cur, opts) => `<label class="ctl" for="${id}">${label}<select id="${id}"><option value="">All</option>${opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`; }).join("")}</select></label>`;
+const uniq = (rows, k) => [...new Set(rows.map(r => r[k]).filter(Boolean))].sort();
+
+function vRegister(k) {
+  const st = UI[k], D = A[k], rows = D.rows;
+  const f = rows.filter(r => (!st.st || (st.st === "open" ? r.isOpen : st.st === "over30" ? r.age > 30 : r.status === st.st))
+    && (!st.cat || r.category === st.cat) && (!st.who || r.raisedBy === st.who) && (!st.sev || r.severity === st.sev)
+    && (!st.q || (r.ref + " " + r.desc + " " + r.remarks).toLowerCase().includes(st.q.toLowerCase())));
+  const stOpts = [["open", "All open"], ["over30", "Open over 30 days"], ...KNOWN_STATUS.map(s => [s, STATUS[s][0]])];
+  const cols = [{ k: "ref", l: `${k} reference`, h: r => `<span class="mono">${esc(r.ref)}</span>` }, { k: "category", l: "Cat.", h: r => `<span class="tag">${esc(r.category)}</span>` },
+    { k: "desc", l: "Description", cls: "desc" }, { k: "issue", l: "Issued", cls: "d", h: dH("issue") }, { k: "age", l: "Open for", cls: "n", h: ageH },
+    { k: "status", l: "Status", h: r => pill(r.status) }, ...(k === "NCR" ? [{ k: "severity", l: "Severity" }] : []), { k: "raisedBy", l: "Raised by" }, { k: "closure", l: "Closed", cls: "d", h: dH("closure") }];
+  return `${header()}
+  <section><div class="tiles">
+    ${tile(`Open ${k}s`, D.open, `of ${D.total} issued to date`, D.over30 ? "crit" : "good")}
+    ${tile("Open over 30 days", D.over30, `${D.buckets[3]} open over 60 days`, D.over30 ? "crit" : "good")}
+    ${tile("Close-out rate", P(D.closeRate), "Closed ÷ issued, excluding terminated", D.closeRate >= .85 ? "good" : "warn")}
+    ${tile("1st response on time", P(D.onTime), "Contractor answered within 7 days", D.onTime >= .8 ? "good" : D.onTime >= .5 ? "warn" : "crit")}
+    ${tile("Average days to close", D.avgClose.toFixed(0), "Issue date to final closure", "", "", "days")}
+  </div></section>
+  <section><div class="grid2">
+    <div class="card"><h3>${k}s by category</h3><p class="sub">Top 8 categories · click a bar to filter the register</p><div class="cv"><canvas id="rc1" role="img" aria-label="${k}s by category"></canvas></div></div>
+    <div class="card"><h3>Where open ${k}s are stuck</h3><p class="sub">Current status of open items · click to filter</p><div class="cv"><canvas id="rc2" role="img" aria-label="Open ${k}s by status"></canvas></div></div>
+  </div></section>
+  <section><h2>${k} register</h2><div class="filters" style="margin-bottom:10px">
+    <input type="search" id="q-${k}" placeholder="Search reference, description or remarks" value="${esc(st.q)}" aria-label="Search">
+    ${sel(`st-${k}`, "Status", st.st, stOpts)}${sel(`cat-${k}`, "Category", st.cat, uniq(rows, "category"))}${sel(`who-${k}`, "Raised by", st.who, uniq(rows, "raisedBy"))}
+    ${k === "NCR" ? sel(`sev-${k}`, "Severity", st.sev, uniq(rows, "severity")) : ""}
+    <button class="btn" type="button" data-reset="${k}">Reset</button></div>
+  ${table(`t-${k}`, cols, f, st)}</section>`;
+}
+function afterRegister(k) {
+  const st = UI[k];
+  draw("rc1", p => CFG.category(p, k, (e, els, ch) => { if (!els.length) return; st.cat = ch.data.labels[els[0].index]; st.st = els[0].datasetIndex === 0 ? "open" : ""; render(); }));
+  draw("rc2", p => CFG.status(p, k, (e, els) => { if (!els.length) return; st.st = ["OPEN", "REJECTED", "PENDING", "RESPONDED"][els[0].index]; render(); }));
+  wireSort(`t-${k}`, st);
+  const on = (id, key, ev = "change") => { const el = document.getElementById(id); if (el) el.addEventListener(ev, () => { st[key] = el.value; render(key === "q" ? id : null); }); };
+  on(`q-${k}`, "q", "input"); on(`st-${k}`, "st"); on(`cat-${k}`, "cat"); on(`who-${k}`, "who"); on(`sev-${k}`, "sev");
+}
+
+function vSWN() {
+  const st = UI.SWN, W = A.SWN;
+  const f = W.rows.filter(r => (!st.st || (st.st === "open" ? r.isOpen : !r.isOpen)) && (!st.q || (r.ref + " " + r.desc).toLowerCase().includes(st.q.toLowerCase())));
+  const tc = W.rows.filter(r => r.issue && r.closure); const avg = tc.length ? tc.reduce((s, r) => s + days(r.closure, r.issue), 0) / tc.length : 0;
+  const cols = [{ k: "ref", l: "Notice reference", h: r => `<span class="mono">${esc(r.ref)}</span>` }, { k: "desc", l: "Description", cls: "desc" }, { k: "theme", l: "Theme" },
+    { k: "issue", l: "Issued", cls: "d", h: dH("issue") }, { k: "closure", l: "Returned to contractor", cls: "d", h: dH("closure") },
+    { k: "days", l: "Days to close", cls: "n", v: r => r.issue && r.closure ? days(r.closure, r.issue) : null, h: r => r.issue && r.closure ? days(r.closure, r.issue) : "" },
+    { k: "status", l: "Status", h: r => r.isOpen ? `<span class="pill p-crit">${esc(title(r.status))}</span>` : pill("CLOSED") }, { k: "contractorRef", l: "Contractor reply", h: r => `<span class="mono">${esc(r.contractorRef)}</span>` }];
+  return `${header()}
+  <section><div class="tiles">${tile("Stop work notices issued", W.total, "To date", "warn")}${tile("Still open", W.open, W.open ? "Work remains suspended or response pending" : "All notices closed", W.open ? "crit" : "good")}
+    ${tile("Issued this period", W.per, delta(W.per, W.prev), W.per ? "warn" : "")}${tile("Average days to close", avg.toFixed(0), "Issue date to return", "", "", "days")}</div></section>
+  <section class="card"><h3>Stop work notices by theme</h3><p class="sub">Theme is assigned from keywords in the description</p><div class="cv"><canvas id="sc1" role="img" aria-label="Stop work notices by theme"></canvas></div></section>
+  <section><h2>Stop work register</h2><div class="filters" style="margin-bottom:10px"><input type="search" id="q-SWN" placeholder="Search reference or description" value="${esc(st.q)}" aria-label="Search">
+    ${sel("st-SWN", "Status", st.st, [["open", "Open"], ["closed", "Closed"]])}</div>${table("t-SWN", cols, f, st)}</section>`;
+}
+function afterSWN() { draw("sc1", CFG.swnThemes); wireSort("t-SWN", UI.SWN);
+  $("#q-SWN").addEventListener("input", e => { UI.SWN.q = e.target.value; render("q-SWN"); }); $("#st-SWN").addEventListener("change", e => { UI.SWN.st = e.target.value; render(); }); }
+
+function vINC() {
+  const st = UI.INC, I = A.INC;
+  const f = I.rows.filter(r => (!st.grp || r.group === st.grp) && (!st.cat || r.category === st.cat) && (!st.st || (st.st === "open" ? r.isOpen : !r.isOpen))
+    && (!st.q || (r.desc + " " + r.type + " " + r.category).toLowerCase().includes(st.q.toLowerCase())));
+  const cols = [{ k: "date", l: "Date", cls: "d", h: r => r.date ? fmt(r.date) : `<span class="pill p-crit">${esc(r.dateText || "missing")}</span>` },
+    { k: "type", l: "Type", h: r => `<span class="pill ${r.group === "Recordable" ? "p-crit" : r.group === "First Aid" ? "p-serious" : r.group === "Near Miss" ? "p-info" : "p-mute"}">${esc(r.type)}</span>` },
+    { k: "category", l: "Category" }, { k: "desc", l: "Description", cls: "desc", h: r => esc(r.desc.length > 260 ? r.desc.slice(0, 257) + "…" : r.desc) },
+    { k: "hipo", l: "High potential", h: r => r.hipo ? `<span class="pill p-crit">Yes</span>` : "" }, { k: "lostDays", l: "Lost days", cls: "n", h: r => r.lostDays || "" },
+    { k: "statusRaw", l: "Log status", h: r => r.isOpen ? `<span class="pill p-warn">${esc(r.statusRaw || "Blank")}</span>` : pill("CLOSED") }];
+  return `${header()}
+  <section><div class="tiles">${tile("Near misses", I.nm, `${I.nmPer} this period`, "info")}${tile("Recordable injuries", I.rec, `${I.lost} lost work days to date`, I.rec ? "crit" : "good")}
+    ${tile("First aid cases", I.fa, "Treated on site", I.fa ? "warn" : "good")}${tile("High-potential events", I.hipo, "Flagged in the log", I.hipo ? "crit" : "good")}
+    ${tile("Log entries not closed", I.open, "Status other than Closed", I.open ? "warn" : "good")}</div></section>
+  <section><div class="grid2">
+    <div class="card"><h3>Events per month</h3><p class="sub">By event type</p><div class="cv"><canvas id="ic1" role="img" aria-label="Events per month"></canvas></div></div>
+    <div class="card"><h3>Event categories</h3><p class="sub">Top 10 · click a bar to filter the log</p><div class="cv tall"><canvas id="ic2" role="img" aria-label="Event categories"></canvas></div></div></div></section>
+  <section><h2>Incident and near-miss log</h2><div class="filters" style="margin-bottom:10px"><input type="search" id="q-INC" placeholder="Search description, type or category" value="${esc(st.q)}" aria-label="Search">
+    ${sel("grp-INC", "Type", st.grp, EVENT_GROUPS)}${sel("cat-INC", "Category", st.cat, uniq(I.rows, "category"))}${sel("st-INC", "Log status", st.st, [["open", "Not closed"], ["closed", "Closed"]])}
+    <button class="btn" type="button" data-reset="INC">Reset</button></div>${table("t-INC", cols, f, st)}</section>`;
+}
+function afterINC() {
+  draw("ic1", CFG.events); draw("ic2", p => CFG.topCats(p, A.INC.rows, (e, els, ch) => { if (!els.length) return; UI.INC.cat = ch.data.labels[els[0].index]; render(); }, 10));
+  wireSort("t-INC", UI.INC); $("#q-INC").addEventListener("input", e => { UI.INC.q = e.target.value; render("q-INC"); });
+  for (const [id, k] of [["grp-INC", "grp"], ["cat-INC", "cat"], ["st-INC", "st"]]) $("#" + id).addEventListener("change", e => { UI.INC[k] = e.target.value; render(); });
+}
+
+function openRows() { return [...A.NCR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "NCR" }, r)), ...A.SOR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "SOR" }, r))]; }
+function vOpen() {
+  const st = UI.OPEN, all = openRows();
+  const f = all.filter(r => (!st.ds || r.ds === st.ds) && (!st.bucket || r.bucket === st.bucket));
+  const cols = [{ k: "ds", l: "Type", h: r => `<span class="tag">${r.ds}</span>` }, { k: "ref", l: "Reference", h: r => `<span class="mono">${esc(r.ref)}</span>` }, { k: "category", l: "Cat." },
+    { k: "desc", l: "Description", cls: "desc" }, { k: "issue", l: "Issued", cls: "d", h: dH("issue") }, { k: "age", l: "Open for", cls: "n", h: ageH },
+    { k: "status", l: "Status", h: r => pill(r.status) }, { k: "severity", l: "Severity" }, { k: "raisedBy", l: "Raised by" }];
+  return `${header()}<section><h2>Open NCRs and SORs<small>oldest first</small></h2>
+  <div class="filters" style="margin-bottom:10px">${sel("ds-OPEN", "Type", st.ds, ["NCR", "SOR"])}${sel("b-OPEN", "Age", st.bucket || "", BUCKETS)}
+  ${BUCKETS.map((b, i) => `<span class="chip">${b}<i>${A.NCR.buckets[i]} NCR · ${A.SOR.buckets[i]} SOR</i></span>`).join("")}</div>${table("t-OPEN", cols, f, st)}</section>`;
+}
+function afterOpen() { wireSort("t-OPEN", UI.OPEN); $("#ds-OPEN").addEventListener("change", e => { UI.OPEN.ds = e.target.value; render(); }); $("#b-OPEN").addEventListener("change", e => { UI.OPEN.bucket = e.target.value; render(); }); }
+
+function vChecks() {
+  const list = [...A.checks].sort((a, b) => (b.items.length > 0) - (a.items.length > 0) || (a.sev === "warn" ? -1 : 1));
+  return `${header()}<section><h2>Data checks<small>review before sending the client Excel</small></h2><div class="checks">${list.map(c => {
+    const ok = !c.items.length, s = ok ? "p-good" : c.sev === "warn" ? "p-crit" : "p-info";
+    return `<div class="check"><span class="c" style="color:${ok ? "var(--good)" : c.sev === "warn" ? "var(--crit)" : "var(--info-ink)"}">${c.items.length}</span><span class="t">${esc(c.label)}</span><span class="pill ${s}">${ok ? "OK" : c.sev === "warn" ? "Check" : "Note"}</span>
+    ${ok ? "" : `<span class="f">${esc(c.fix)}</span><details><summary>Show ${c.items.length} item${c.items.length > 1 ? "s" : ""}</summary><ul>${c.items.slice(0, 200).map(i => `<li>${esc(i)}</li>`).join("")}</ul></details>`}</div>`; }).join("")}</div></section>`;
+}
+
+const HKEY = "hse-dash-history";
+function snapshot() { if (S.demo || !S.rpt) return; const h = load(HKEY) || {}; h[iso(S.rpt)] = { ncrTotal: A.NCR.total, ncrOpen: A.NCR.open, ncrOver30: A.NCR.over30, sorTotal: A.SOR.total, sorOpen: A.SOR.open, sorOver30: A.SOR.over30, nm: A.INC.nm, swn: A.SWN.total, saved: new Date().toISOString() }; store(HKEY, h); }
+function vHistory() {
+  const h = load(HKEY) || {}, keys = Object.keys(h).sort();
+  if (!keys.length) return `${header()}<div class="empty">Each time you load real trackers, the headline figures are saved here by report date, so you can compare weeks.${S.demo ? " Demo data is not saved." : ""}</div>`;
+  const rows = keys.map(k => Object.assign({ d: fromIso(k) }, h[k]));
+  const cols = [{ k: "d", l: "Report date", cls: "d", h: r => fmtL(r.d) }, { k: "ncrOpen", l: "Open NCR", cls: "n" }, { k: "ncrOver30", l: "NCR > 30 d", cls: "n" }, { k: "ncrTotal", l: "NCR issued", cls: "n" },
+    { k: "sorOpen", l: "Open SOR", cls: "n" }, { k: "sorOver30", l: "SOR > 30 d", cls: "n" }, { k: "sorTotal", l: "SOR issued", cls: "n" }, { k: "nm", l: "Near misses", cls: "n" }, { k: "swn", l: "Stop work", cls: "n" }];
+  return `${header()}<section class="card"><h3>Open items at each report date</h3><p class="sub">Saved automatically when trackers are loaded</p><div class="cv"><canvas id="hc1" role="img" aria-label="History of open items"></canvas></div></section>
+  <section><h2>Saved report dates</h2>${table("t-H", cols, rows, { sort: ["d", -1] })}</section>`;
+}
+function afterHistory() { const h = load(HKEY) || {}, keys = Object.keys(h).sort(); if (!keys.length) return;
+  draw("hc1", p => ({ type: "line", data: { labels: keys.map(k => fmt(fromIso(k), { day: "2-digit", month: "short" })), datasets: [["Open NCR", "ncrOpen", p.s[0]], ["Open SOR", "sorOpen", p.s[1]]].map(([l, k, c]) => ({ label: l, data: keys.map(x => h[x][k]), borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 3, tension: 0 })) }, options: opts(p) })); }
+
+function vSettings() {
+  const f = (id, l, hint, ph) => `<label class="fld" for="set-${id}"><span>${l}</span><input id="set-${id}" value="${esc(PROJECT[id])}" placeholder="${esc(ph)}"><small>${hint}</small></label>`;
+  const t = (id, l, hint, ph) => `<label class="fld" for="set-${id}"><span>${l}</span><textarea id="set-${id}" rows="5" placeholder="${esc(ph)}">${esc(PROJECT[id])}</textarea><small>${hint}</small></label>`;
+  return `<section class="card set"><h3>Project details</h3><p class="sub">Saved in this browser only. They appear on the dashboard and in the client Excel, and never in the code on GitHub.</p>
+  <div class="setgrid">${f("name", "Project name", "Short name, used in titles and the Excel file name", "e.g. Arts Centre")}${f("contract", "Contract / package", "Shown under the title", "e.g. Main Works package")}
+  ${f("contractor", "Main contractor", "Shown under the title", "e.g. ABC Contracting")}${f("consultant", "Supervision consultant", "Named as the source of the NCR / SOR register", "e.g. XYZ Consultants")}
+  <label class="fld" for="set-earliestIssue"><span>Earliest plausible issue date</span><input type="date" id="set-earliestIssue" value="${esc(PROJECT.earliestIssue)}"><small>Earlier issue dates are flagged as likely typos</small></label></div>
+  <div class="setgrid">${t("people", "Inspector name corrections", "One per line: name as typed = name to report", "Mohd = Mohammed")}${t("categories", "Incident category corrections", "One per line: category as typed = standard category", "Fall from hieght (Person) = Fall from Height (Person)")}</div>
+  <div><button class="btn primary" type="button" id="saveSet">Save settings</button></div></section>`;
+}
+function afterSettings() {
+  $("#saveSet").addEventListener("click", () => {
+    for (const k of Object.keys(DEFAULT_SETTINGS)) { const el = document.getElementById("set-" + k); if (el) PROJECT[k] = el.value.trim(); }
+    if (!PROJECT.earliestIssue) PROJECT.earliestIssue = DEFAULT_SETTINGS.earliestIssue;
+    store(SETTINGS_KEY, PROJECT); PEOPLE_MAP = parseMap(PROJECT.people); INC_CATEGORY_MAP = Object.assign({}, BASE_CATEGORY_MAP, parseMap(PROJECT.categories));
+    applyBrand(); render(); toast("Settings saved.");
+  });
+}
+function applyBrand() { $("#brandName").textContent = PROJECT.name ? PROJECT.name + " HSE" : "Site HSE"; $("#subtitle").textContent = [PROJECT.contract, PROJECT.contractor].filter(Boolean).join(" · "); }
+
+/* ---------- render ---------- */
+function render(keepFocus) {
+  A = analyze(); destroyAll(); renderTabs();
+  const v = route(), view = $("#view");
+  const map = { overview: [vOverview, afterOverview], ncr: [() => vRegister("NCR"), () => afterRegister("NCR")], sor: [() => vRegister("SOR"), () => afterRegister("SOR")],
+    "stop-work": [vSWN, afterSWN], incidents: [vINC, afterINC], "open-items": [vOpen, afterOpen], checks: [vChecks, () => {}], history: [vHistory, afterHistory], settings: [vSettings, afterSettings] };
+  const [html, after] = map[v]; view.innerHTML = html(); after();
+  view.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { const g = b.dataset.go; if (g === "ncr" || g === "sor") UI[g.toUpperCase()].st = "open"; location.hash = g; }));
+  view.querySelectorAll("[data-act=load]").forEach(b => b.addEventListener("click", () => $("#file").click()));
+  view.querySelectorAll("[data-reset]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.reset; Object.assign(UI[k], { q: "", st: k === "INC" ? "" : "open", cat: "", who: "", sev: "", grp: "" }); render(); }));
+  if (keepFocus) { const el = document.getElementById(keepFocus); if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (e) {} } }
+  $("#rpt").value = iso(A.rpt); $("#per").value = String(S.period);
+}
+
+/* =====================================================================
+   Loading files
+   ===================================================================== */
+async function loadFiles(files) {
+  const results = [], notes = [];
+  for (const file of files) {
+    try { const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }); const found = parseWorkbook(wb, file.name);
+      if (!Object.keys(found).length) notes.push(`${file.name}: no NCR, SOR, stop-work or incident register found`);
+      results.push(found);
+    } catch (e) { notes.push(`${file.name}: could not be read (${e.message})`); }
+  }
+  const merged = {}; for (const f of results) for (const k in f) if (!merged[k] || f[k].rows.length >= merged[k].rows.length) merged[k] = f[k];
+  if (!Object.keys(merged).length) { toast(notes.join("\n") || "No data found in those files."); return; }
+  if (S.demo) { S.data = { NCR: [], SOR: [], SWN: [], INC: [] }; S.meta = {}; S.demo = false; S.rpt = null; }
+  let hd = null;
+  for (const k in merged) { const m = merged[k];
+    S.data[k] = k === "INC" ? cleanINC(m.rows) : k === "SWN" ? cleanSWN(m.rows) : cleanFindings(m.rows, k);
+    S.meta[k] = { file: m.file, sheet: m.sheet, headerDate: m.headerDate || null, missing: m.missing.filter(f => f !== "remarks"), loaded: new Date().toISOString() };
+    if (!hd && m.headerDate && k !== "INC") hd = m.headerDate;
+    notes.unshift(`${DATASETS[k].label}: ${S.data[k].length} rows from "${m.sheet}"${S.meta[k].missing.length ? ` (missing: ${S.meta[k].missing.join(", ")})` : ""}`);
+  }
+  if (hd) S.rpt = hd;
+  if (!S.rpt) { const all = [...S.data.NCR, ...S.data.SOR].map(r => r.issue).concat(S.data.INC.map(r => r.date)).filter(Boolean); S.rpt = all.length ? new Date(Math.max(...all)) : new Date(); }
+  render(); snapshot(); persist();
+  toast(notes.join("\n") + (hd ? `\nReport date set to ${fmtL(hd)} from the tracker header.` : ""), 7000);
+}
+
+/* =====================================================================
+   Client Excel export
+   ===================================================================== */
+const whiteBg = { id: "whiteBg", beforeDraw(c) { const x = c.ctx; x.save(); x.fillStyle = "#ffffff"; x.fillRect(0, 0, c.width, c.height); x.restore(); } };
+function png(make, heading, w = 900, h = 420) {
+  const host = document.createElement("div"); host.style.cssText = `position:fixed;left:-30000px;top:0;width:${w}px;height:${h}px`;
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h; host.appendChild(cv); document.body.appendChild(host);
+  const cfg = make(LIGHT); cfg.options = Object.assign({}, cfg.options, { responsive: false, animation: false, devicePixelRatio: 2, onClick: undefined, onHover: undefined });
+  cfg.options.plugins = Object.assign({}, cfg.options.plugins, { title: { display: true, text: heading, align: "start", color: LIGHT.ink, font: { size: 16, weight: "600" }, padding: { bottom: 12 } } });
+  cfg.plugins = [whiteBg];
+  const ch = new Chart(cv, cfg); const url = cv.toDataURL("image/png"); ch.destroy(); host.remove(); return url;
+}
+async function saveFile(name, blob) {
+  if (window.claude && typeof window.claude.use === "function") {
+    try { const d = await window.claude.use("downloads"); if (d) { await d.save({ filename: name, data: blob }); toast("Excel saved."); return; } }
+    catch (e) { if (e && e.code === "declined") return; toast("Download isn't available in this preview. Use the GitHub Pages version."); return; }
+    toast("Download isn't available in this preview. Use the GitHub Pages version."); return;
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function exportExcel() {
+  const btn = $("#xlsBtn"); btn.disabled = true; btn.textContent = "Preparing…";
+  try {
+    A = analyze();
+    const N = A.NCR, R = A.SOR, I = A.INC, W = A.SWN;
+    const wb = new ExcelJS.Workbook(); wb.creator = "HSE Dashboard"; wb.created = new Date();
+    const NAVY = "FF14201C", GREEN = "FF0F6E55", MUTED = "FF56665F", LINE = "FFDCE3E0", F = "Arial";
+    const ws = wb.addWorksheet("Dashboard", { views: [{ showGridLines: false }], pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: .3, right: .3, top: .4, bottom: .4, header: .2, footer: .2 } } });
+    ws.columns = [{ width: 2 }, ...Array(12).fill({ width: 12.5 }), { width: 2 }];
+    ws.mergeCells("B2:M2"); Object.assign(ws.getCell("B2"), { value: `${PROJECT.name ? PROJECT.name + " — " : ""}HSE Performance Dashboard`, font: { name: F, size: 20, bold: true, color: { argb: NAVY } } });
+    ws.mergeCells("B3:M3"); Object.assign(ws.getCell("B3"), { value: `${[PROJECT.contract, PROJECT.contractor && "Contractor: " + PROJECT.contractor].filter(Boolean).map(x => x + " · ").join("")}Reporting period ${fmt(A.perStart, { day: "2-digit", month: "short" })} – ${fmtL(A.rpt)} (${A.per} days)`, font: { name: F, size: 10, color: { argb: MUTED } } });
+    ws.mergeCells("B4:M4"); Object.assign(ws.getCell("B4"), { value: `Sources: ${PROJECT.consultant ? PROJECT.consultant + " " : ""}NCR/SOR register (${N.total} NCRs, ${R.total} SORs), Stop Work register (${W.total}), contractor incident log (${I.total} entries)`, font: { name: F, size: 8, italic: true, color: { argb: MUTED } } });
+    ws.getRow(2).height = 30;
+    const section = (row, text) => { ws.mergeCells(`B${row}:M${row}`); const c = ws.getCell(`B${row}`); c.value = text; c.font = { name: F, size: 11, bold: true, color: { argb: GREEN } };
+      for (let col = 2; col <= 13; col++) ws.getRow(row).getCell(col).border = { bottom: { style: "medium", color: { argb: GREEN } } }; ws.getRow(row).height = 20; };
+    const COLS = ["B", "E", "H", "K"], END = ["D", "G", "J", "M"];
+    const tiles = (row, list) => { list.forEach(([l, v, s, color], i) => { const a = COLS[i], b = END[i];
+      ws.mergeCells(`${a}${row}:${b}${row}`); ws.mergeCells(`${a}${row + 1}:${b}${row + 1}`); ws.mergeCells(`${a}${row + 2}:${b}${row + 2}`);
+      const st = { argb: color || NAVY }, side = { left: { style: "thick", color: st } };
+      Object.assign(ws.getCell(`${a}${row}`), { value: l.toUpperCase(), font: { name: F, size: 8, bold: true, color: { argb: MUTED } }, alignment: { indent: 1, vertical: "bottom" } });
+      Object.assign(ws.getCell(`${a}${row + 1}`), { value: v, font: { name: F, size: 22, bold: true, color: st }, alignment: { indent: 1, horizontal: "left", vertical: "middle" } });
+      Object.assign(ws.getCell(`${a}${row + 2}`), { value: s, font: { name: F, size: 8, color: { argb: MUTED } }, alignment: { indent: 1, vertical: "top", wrapText: true } });
+      for (let r = row; r <= row + 2; r++) { ws.getCell(`${a}${r}`).border = side; ws.getCell(`${a}${r}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7F9F8" } }; } });
+      ws.getRow(row).height = 18; ws.getRow(row + 1).height = 32; ws.getRow(row + 2).height = 26; };
+    const RED = "FFD03B3B", AMB = "FFC98500", GRN = "FF0B8A3E", BLU = "FF2A78D6";
+    section(6, `This period (${fmt(A.perStart, { day: "2-digit", month: "short" })} – ${fmt(A.rpt, { day: "2-digit", month: "short" })}) vs previous ${A.per} days`);
+    tiles(7, [["NCRs issued", N.issuedPer, `Previous period: ${N.issuedPrev}`, BLU], ["SORs issued", R.issuedPer, `Previous period: ${R.issuedPrev}`, BLU],
+      ["Near misses reported", I.nmPer, `Previous period: ${I.nmPrev}`, BLU], ["Stop work notices", W.per, `Previous period: ${W.prev}`, AMB]]);
+    section(11, "Position at report date");
+    tiles(12, [["Open NCRs", N.open, `${N.over30} open > 30 days · ${N.major} Major`, N.over30 ? RED : GRN], ["Open SORs", R.open, `${R.over30} open > 30 days`, R.over30 ? RED : GRN],
+      ["NCR close-out rate", P(N.closeRate), `SOR ${P(R.closeRate)} · closed ÷ issued excl. terminated`, N.closeRate >= .85 ? GRN : AMB], ["1st response on time", P(N.onTime), `NCR within 7 days · SOR ${P(R.onTime)}`, N.onTime >= .8 ? GRN : RED]]);
+    tiles(15, [["Avg days to close NCR", Math.round(N.avgClose), `SOR ${Math.round(R.avgClose)} days`, NAVY], ["Near misses to date", I.nm, `${I.hipo} high-potential events`, BLU],
+      ["Recordable injuries", I.rec, `${I.fa} first aid cases · ${I.lost} lost days`, I.rec ? RED : GRN], ["Days since last recordable", I.sinceRec == null ? "—" : I.sinceRec, I.lastRec ? `Last: ${fmtL(I.lastRec)}` : "None logged", GRN]]);
+    section(19, "Trends and breakdowns");
+    const imgs = [[p => CFG.issuedClosed(p, "NCR"), "NCRs issued and closed per month"], [p => CFG.issuedClosed(p, "SOR"), "SORs issued and closed per month"],
+      [CFG.backlog, "Open backlog at month end"], [p => CFG.age(p), "Open items by age"], [CFG.events, "Incident log events per month"], [p => CFG.topCats(p, I.rows), "Most frequent event categories"],
+      [p => CFG.category(p, "NCR"), "NCRs by category"], [CFG.swnThemes, "Stop work notices by theme"]];
+    imgs.forEach(([make, h], i) => { const id = wb.addImage({ base64: png(make, h), extension: "png" }); const r = 20 + Math.floor(i / 2) * 15;
+      ws.addImage(id, { tl: { col: i % 2 ? 7 : 1, row: r }, ext: { width: 520, height: 243 } }); });
+    const noteRow = 20 + 4 * 15 + 1; ws.mergeCells(`B${noteRow}:M${noteRow + 1}`);
+    Object.assign(ws.getCell(`B${noteRow}`), { value: "Definitions: Open = any status other than Closed or Terminated. Age = report date minus issue date. 1st response on time = contractor responded within 7 days (tracker column). Recordable = MTC, RWC, LWC, fatality, occupational illness.", font: { name: F, size: 8, italic: true, color: { argb: MUTED } }, alignment: { wrapText: true, vertical: "top" } });
+    ws.pageSetup.printArea = `A1:N${noteRow + 1}`;
+
+    const sheet = (name, cols, rows) => { const s = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }], pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+      s.columns = cols.map(c => ({ header: c[0], key: c[0], width: c[2] || 14 }));
+      rows.forEach(r => { const row = s.addRow(cols.map(c => c[1](r))); cols.forEach((c, i) => { const cell = row.getCell(i + 1); if (cell.value instanceof Date) cell.numFmt = "dd-mmm-yy"; cell.alignment = { vertical: "top", wrapText: !!c[3] }; cell.font = { name: F, size: 9 }; }); });
+      const h = s.getRow(1); h.height = 28; h.eachCell(c => { c.font = { name: F, size: 9, bold: true, color: { argb: "FFFFFFFF" } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GREEN } }; c.alignment = { vertical: "middle", wrapText: true }; });
+      s.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } }; return s; };
+    const st = s => STATUS[s] ? STATUS[s][0] : s;
+    const open = openRows().sort((a, b) => (b.age ?? -1) - (a.age ?? -1));
+    sheet("Open Items", [["Type", r => r.ds, 7], ["Reference", r => r.ref, 44], ["Category", r => r.category, 9], ["Description", r => r.desc, 60, 1], ["Issued", r => r.issue, 11], ["Days open", r => r.age, 9], ["Status", r => st(r.status), 15], ["Severity", r => r.severity, 11], ["Raised by", r => r.raisedBy, 12]], open);
+    const reg = (k) => sheet(`${k} Register`, [["Reference", r => r.ref, 44], ["Category", r => r.category, 9], ...(k === "NCR" ? [["Severity", r => r.severity, 11]] : []), ["Description", r => r.desc, 60, 1], ["Issued", r => r.issue, 11],
+      ["Response due", r => r.respReq, 12], ["Status", r => st(r.status), 15], ["Days open", r => r.age, 9], ["Final closure", r => r.closure, 12], ["Days to close", r => r.toClose, 10], ["1st response on time", r => r.onTime ? "Yes" : "No", 10], ["Raised by", r => r.raisedBy, 12]],
+      [...A[k].rows].sort((a, b) => (b.issue || 0) - (a.issue || 0)));
+    reg("NCR"); reg("SOR");
+    sheet("Stop Work", [["Reference", r => r.ref, 40], ["Description", r => r.desc, 60, 1], ["Theme", r => r.theme, 18], ["Issued", r => r.issue, 11], ["Returned to contractor", r => r.closure, 14], ["Status", r => title(r.status), 10], ["Contractor reply", r => r.contractorRef, 24]], W.rows);
+    sheet("Incident Log", [["Date", r => r.date || r.dateText, 11], ["Type", r => r.type, 18], ["Group", r => r.group, 14], ["Category", r => r.category, 26], ["Description", r => r.desc, 70, 1], ["High potential", r => r.hipo ? "Yes" : "No", 9], ["Lost days", r => r.lostDays, 8], ["Log status", r => r.statusRaw, 10]], [...I.rows].sort((a, b) => (b.date || 0) - (a.date || 0)));
+    const buf = await wb.xlsx.writeBuffer();
+    await saveFile(`${(PROJECT.name || "Site").replace(/[^A-Za-z0-9-]+/g, "_")}_HSE_Dashboard_${iso(A.rpt)}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  } catch (e) { console.error(e); toast("Could not build the Excel file: " + e.message); }
+  finally { btn.disabled = false; btn.textContent = "Download client Excel"; render(); }
+}
+
+/* =====================================================================
+   Demo data (fictional)
+   ===================================================================== */
+function demo() {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, pick = a => a[Math.floor(rnd() * a.length)];
+  const rpt = new Date(2026, 9, 7), start = new Date(2025, 9, 20), span = days(rpt, start);
+  const who = ["Inspector A", "Inspector B", "Inspector C", "Inspector D", "Inspector E", "Inspector F"];
+  const ncrTxt = ["Unauthorised lifting operation at tower crane TC-2", "Scaffold tags missing on core wall access", "Inadequate edge protection at L2 slab", "Expired third-party certificate for mobile crane", "Poor housekeeping at rebar yard", "Hot work without valid permit", "Dust suppression not maintained at excavation", "Workers without harness anchorage at formwork", "Missing traffic marshal at gate 3", "Uncontrolled access to deep excavation"];
+  const sorTxt = ["Formwork props not plumb at grid C4", "Concrete pour without approved checklist", "Curing compound not applied to slab", "Rebar cover blocks missing", "Fire extinguisher overdue for inspection", "Blocked emergency exit at welfare cabin", "Spill kit missing at diesel bowser", "Lighting inadequate in basement B2"];
+  const mkF = (n, ds, cats, txts) => Array.from({ length: n }, (_, i) => { const issue = addD(start, Math.floor(Math.pow(rnd(), .7) * span)); const age = days(rpt, issue);
+    const closed = rnd() < (age > 40 ? .85 : age > 14 ? .55 : .2); const term = !closed && rnd() < .04;
+    const status = closed ? "CLOSED" : term ? "TERMINATED" : pick(["OPEN", "REJECTED", "REJECTED", "PENDING", "RESPONDED"]);
+    return { ref: `DEMO-${ds}-${String(i + 1).padStart(4, "0")}`, category: pick(cats), severity: ds === "NCR" ? (rnd() < .5 ? "Not graded" : pick(["Major", "Moderate"])) : "", desc: pick(txts), issue,
+      closure: closed ? addD(issue, 5 + Math.floor(rnd() * Math.min(70, Math.max(6, age - 5)))) : null, respReq: addD(issue, 7), raisedBy: pick(who), status, onTime: rnd() < .3, remarks: "" }; });
+  const clamp = r => { if (r.closure && r.closure > rpt) r.closure = rpt; return r; };
+  const inc = Array.from({ length: 52 }, () => { const t = pick(["Near Miss", "Near Miss", "Near Miss", "Near Miss", "Near Miss", "First Aid Case", "Equipment / Property Damage", "Medical Treatment Case"]);
+    return { date: addD(start, Math.floor(rnd() * span)), dateText: "", type: t, group: TYPE_GROUPS[t.toLowerCase()], typeKnown: true, category: pick(["Plant People Interface", "Fall from Height (Person)", "Slip Trip and Fall", "Lifting Equipment", "Fall From Height (Object)", "Plant Damage", "Manual Handling"]),
+      categoryRaw: "", desc: "Fictional example event for demonstration.", severity: "1 Low", hipo: rnd() < .04, injury: "", body: "", lostDays: t === "Medical Treatment Case" ? 2 : 0, contractor: "Demo contractor", statusRaw: rnd() < .9 ? "Closed" : "Open", isOpen: false, lessons: "" }; });
+  inc.forEach(r => r.isOpen = r.statusRaw !== "Closed");
+  const swn = ["Lifting operation without approved lift plan", "Work at height without edge protection", "Working without approved RAMS", "Unsafe access to excavation", "Dust control failure at haul road", "Laydown area storage non-compliance"].map((d, i) => { const issue = addD(start, 40 + i * 45); return { ref: `DEMO-SWN-${String(i + 1).padStart(3, "0")}`, desc: d, issue, closure: addD(issue, 10 + i * 4), respReq: addD(issue, 7), raisedBy: "Inspector A", status: "CLOSED", contractorRef: `DEMO-REPLY-${i + 1}`, theme: swnTheme(d) }; });
+  Object.assign(S, { data: { NCR: mkF(120, "NCR", ["HSW", "HSW", "HSW", "STR", "LOG", "CIV"], ncrTxt).map(clamp), SOR: mkF(135, "SOR", ["STR", "STR", "HSE", "HSE", "LOG", "ENV"], sorTxt).map(clamp), SWN: swn, INC: inc },
+    meta: { NCR: { file: "demo", headerDate: rpt, missing: [] }, SOR: { file: "demo", headerDate: rpt, missing: [] }, SWN: { file: "demo", headerDate: rpt, missing: [] }, INC: { file: "demo", missing: [] } }, rpt, period: 7, demo: true });
+}
+
+/* =====================================================================
+   Wiring
+   ===================================================================== */
+$("#loadBtn").addEventListener("click", () => $("#file").click());
+$("#file").addEventListener("change", e => { if (e.target.files.length) loadFiles([...e.target.files]); e.target.value = ""; });
+$("#xlsBtn").addEventListener("click", exportExcel);
+$("#rpt").addEventListener("change", e => { const d = fromIso(e.target.value); if (d) { S.rpt = d; persist(); render(); } });
+$("#per").addEventListener("change", e => { S.period = +e.target.value; persist(); render(); });
+if (!window.claude) { const pb = $("#printBtn"); pb.hidden = false; pb.addEventListener("click", () => window.print()); }
+let clearArm = 0; $("#clearBtn").addEventListener("click", e => { const b = e.currentTarget;
+  if (Date.now() - clearArm < 4000) { store("hse-dash-v1"); store(HKEY); demo(); render(); b.textContent = "Clear stored data"; clearArm = 0; toast("Stored data and history cleared. Showing demo data."); return; }
+  clearArm = Date.now(); b.textContent = "Click again to clear"; setTimeout(() => { if (Date.now() - clearArm >= 3900) b.textContent = "Clear stored data"; }, 4000); });
+let dragN = 0; const drop = $("#drop");
+addEventListener("dragenter", e => { if ([...(e.dataTransfer?.types || [])].includes("Files")) { dragN++; drop.hidden = false; } });
+addEventListener("dragleave", () => { if (--dragN <= 0) { dragN = 0; drop.hidden = true; } });
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("drop", e => { e.preventDefault(); dragN = 0; drop.hidden = true; const f = [...(e.dataTransfer?.files || [])].filter(f => /\.xls[xmb]?$/i.test(f.name)); if (f.length) loadFiles(f); });
+addEventListener("hashchange", () => { render(); scrollTo(0, 0); });
+const rerender = () => { if (A) render(); };
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerender);
+new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+applyBrand();
+if (!restore()) demo();
+render();
+</script>
+
+</body>
+</html>
