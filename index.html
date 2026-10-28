@@ -134,6 +134,13 @@ tbody tr:hover td{background:var(--surface-2)}
 .fld span{font-weight:600}
 .fld small{color:var(--faint);font-size:12px}
 .fld input,.fld textarea{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;font:13px var(--body);color:var(--ink);width:100%;resize:vertical}
+.range{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.fbar{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:grid;gap:6px;position:relative}
+.fbar.on{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.flab{font:700 12px var(--display);font-stretch:85%;text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.fsum{font-size:12px;color:var(--muted)}
+.fsum b{color:var(--ink)}
 .foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 .drop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(2px)}
 .drop div{border:2px dashed var(--accent);border-radius:12px;padding:40px 48px;background:var(--surface);text-align:center;font:700 20px var(--display);font-stretch:85%;max-width:calc(100% - 32px)}
@@ -148,8 +155,8 @@ tbody tr:hover td{background:var(--surface-2)}
 <header class="bar">
   <div class="wrap">
     <div class="brand"><b id="brandName">Site HSE</b><span id="subtitle"></span></div>
-    <label class="ctl" for="rpt">Report date <input type="date" id="rpt"></label>
-    <label class="ctl" for="per">Period <select id="per"><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label>
+    <div class="range"><label class="ctl" for="from">From <input type="date" id="from"></label><label class="ctl" for="to" title="Report date: open items are aged to this date">To <input type="date" id="to"></label>
+    <label class="ctl" for="preset"><span class="sr">Quick range</span><select id="preset" aria-label="Quick range"><option value="">Custom</option><option value="3">Last 3 days</option><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30">Last 30 days</option><option value="month">Month to date</option><option value="prevmonth">Previous month</option></select></label></div>
     <button class="btn" id="loadBtn" type="button">Load trackers</button>
     <button class="btn primary" id="xlsBtn" type="button">Download client Excel</button>
     <button class="btn" id="printBtn" type="button" hidden>Print / PDF</button>
@@ -163,7 +170,7 @@ tbody tr:hover td{background:var(--surface-2)}
     <button class="btn" id="clearBtn" type="button">Clear stored data</button>
   </div>
 </div>
-<div class="drop" id="drop" hidden><div>Drop tracker files<span>NCR / SOR / Stop Work tracker and the contractor incident log</span></div></div>
+<div class="drop" id="drop" hidden><div>Drop tracker files<span>NCR / SOR / Stop Work tracker, contractor incident log or Aconex issues export</span></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
@@ -198,6 +205,16 @@ const DATASETS = {
     category: ["summaryincidentcategory"], rwd: ["no.restrictedworkdays"], lwd: ["no.lostworkdays"], eirc: ["eircheld"],
     suspended: ["worksuspended/stopped"], tbt: ["contractortoolboxtalkconducted"], lessons: ["contractorlessonslearned"],
     status: ["incidentstatusclosed/open", "incidentstatus"] } },
+  // Aconex issues export: detected by an issue-number, status and raised/created-date column in the same header row
+  ACX: { label: "Aconex", detect: { ref: 1, status: 1, issue: 1 }, required: "ref", optional: ["desc", "remarks", "assignedTo", "location", "raisedBy", "priority", "title"], fields: {
+    ref: ["issueid", "issueno", "issueno.", "issuenumber", "issue#", "issueref", "issuereference", "id$", "no$", "no.$", "number$", "reference$"],
+    title: ["title", "issuetitle", "subject", "summary"], desc: ["description$", "details$", "issuedescription"], type: ["issuetype", "type$", "category$", "issuecategory"],
+    status: ["status", "issuestatus"], priority: ["priority", "severity$"], raisedBy: ["raisedby", "createdby", "reportedby", "author$", "originator"],
+    assignedOrg: ["assignedtoorganization", "assignedtoorganisation", "assignedorganization", "assignedorganisation", "responsibleorganization", "responsibleorganisation", "responsiblecompany", "assignedtocompany", "organization$", "organisation$"],
+    assignedTo: ["assignedto", "assignee", "responsibleperson", "responsible$", "assignedtouser"], location: ["location", "area$", "zone$"],
+    issue: ["dateraised", "raiseddate", "raisedon", "datecreated", "createddate", "createdon", "dateopened", "openeddate", "created$", "opened$", "date$"],
+    due: ["duedate", "datedue", "due$", "targetdate", "responsedue"], closure: ["dateclosed", "closeddate", "closedon", "datecompleted", "completeddate", "closed$"],
+    remarks: ["comments", "remarks", "notes"] } },
 };
 // Extra name / category corrections come from the Settings tab ("typed = reported", one per line).
 const parseMap = t => Object.fromEntries(String(t || "").split(/\n/).map(l => l.split("=")).filter(p => p.length === 2 && p[0].trim() && p[1].trim()).map(([a, b]) => [a.trim().toLowerCase(), b.trim()]));
@@ -259,6 +276,9 @@ let toastT; function toast(msg, ms = 4200) { let el = $(".toast"); if (!el) { el
 /* =====================================================================
    Reading tracker files
    ===================================================================== */
+function aliasHit(hdr, aliases) { return aliases.some(a => a.startsWith("~") ? hdr.some(h => h.includes(a.slice(1))) : hdr.includes(a.replace(/\$$/, ""))); }
+function findHeaderBy(rows, ds) { for (let r = 0; r < Math.min(40, rows.length); r++) { const hdr = (rows[r] || []).map(norm); if (hdr.includes("descriptionofncr") || hdr.includes("descriptionofsor")) continue;
+  if (Object.keys(ds.detect).every(f => aliasHit(hdr, ds.fields[f]))) return r; } return -1; }
 function findHeader(rows, key) { for (let r = 0; r < Math.min(40, rows.length); r++) if ((rows[r] || []).some(c => norm(c) === key)) return r; return -1; }
 function headerDate(rows, hr) {
   for (let r = 0; r < hr; r++) { const row = rows[r] || [];
@@ -269,8 +289,8 @@ function extract(rows, hr, ds) {
   const hdr = (rows[hr] || []).map(norm), col = {}, missing = [];
   for (const [f, aliases] of Object.entries(ds.fields)) {
     let i = -1;
-    for (const a of aliases) { if (a.startsWith("~")) continue; i = hdr.indexOf(a); if (i >= 0) break; }
-    if (i < 0) for (const a of aliases) { i = a.startsWith("~") ? hdr.findIndex(h => h && h.includes(a.slice(1))) : hdr.findIndex(h => h && h.startsWith(a)); if (i >= 0) break; }
+    for (const a of aliases) { if (a.startsWith("~")) continue; i = hdr.indexOf(a.replace(/\$$/, "")); if (i >= 0) break; }
+    if (i < 0) for (const a of aliases.filter(a => !a.endsWith("$"))) { i = a.startsWith("~") ? hdr.findIndex(h => h && h.includes(a.slice(1))) : hdr.findIndex(h => h && h.startsWith(a)); if (i >= 0) break; }
     if (i >= 0) col[f] = i; else missing.push(f);
   }
   const out = [];
@@ -290,7 +310,7 @@ function parseWorkbook(wb, file) {
     if (/dropdown|list|lookup|pivot/i.test(name)) continue;
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true });
     for (const [k, ds] of Object.entries(DATASETS)) {
-      const hr = findHeader(rows, ds.key); if (hr < 0) continue;
+      const hr = ds.detect ? findHeaderBy(rows, ds) : findHeader(rows, ds.key); if (hr < 0) continue;
       const res = extract(rows, hr, ds); res.sheet = name; res.file = file;
       if (!found[k] || res.rows.length > found[k].rows.length) found[k] = res;
     }
@@ -322,24 +342,34 @@ function cleanINC(raw) {
       statusRaw, isOpen: statusRaw.toLowerCase() !== "closed", lessons: txt(r.lessons) };
   });
 }
-const DATE_KEYS = ["issue", "closure", "respReq", "date"];
+function cleanACX(raw) {
+  return raw.map(r => ({ ref: txt(r.ref), title: txt(r.title), desc: txt(r.desc), type: txt(r.type), status: title(r.status) || "(blank)", priority: title(r.priority),
+    raisedBy: person(r.raisedBy), raisedByRaw: txt(r.raisedBy), assignedOrg: txt(r.assignedOrg), assignedTo: txt(r.assignedTo), location: txt(r.location),
+    issue: toDate(r.issue), due: toDate(r.due), closure: toDate(r.closure), remarks: txt(r.remarks) }));
+}
+const DATE_KEYS = ["issue", "closure", "respReq", "date", "due"];
 
 /* =====================================================================
    State
    ===================================================================== */
-const S = { data: { NCR: [], SOR: [], SWN: [], INC: [] }, meta: {}, rpt: null, period: 7, demo: false };
-const UI = { NCR: { q: "", st: "open", cat: "", who: "", sev: "", sort: ["age", -1] }, SOR: { q: "", st: "open", cat: "", who: "", sev: "", sort: ["age", -1] },
-  SWN: { q: "", st: "", sort: ["issue", -1] }, INC: { q: "", grp: "", cat: "", st: "", sort: ["date", -1] }, OPEN: { ds: "", sort: ["age", -1] } };
+const S = { data: emptyData(), meta: {}, from: null, to: null, demo: false };
+function emptyData() { return { NCR: [], SOR: [], SWN: [], INC: [], ACX: [] }; }
+const UI = { NCR: { q: "", cat: "", who: "", sev: "", st: "open", sort: ["age", -1] }, SOR: { q: "", cat: "", who: "", sev: "", st: "open", sort: ["age", -1] },
+  SWN: { q: "", theme: "", st: "", sort: ["issue", -1] }, INC: { q: "", grp: "", cat: "", st: "", sort: ["date", -1] },
+  ACX: { q: "", type: "", org: "", pri: "", st: "open", sort: ["age", -1] }, OPEN: { ds: "", bucket: "", sort: ["age", -1] } };
 
 function persist() {
-  const plain = JSON.parse(JSON.stringify({ data: S.data, meta: S.meta, rpt: iso(S.rpt), period: S.period, demo: S.demo }, (k, v) => v));
+  const plain = JSON.parse(JSON.stringify({ data: S.data, meta: S.meta, from: iso(S.from), to: iso(S.to), demo: S.demo }));
   store("hse-dash-v1", plain);
 }
 function restore() {
   const p = load("hse-dash-v1"); if (!p || !p.data) return false;
-  for (const k in p.data) for (const r of p.data[k]) for (const dk of DATE_KEYS) if (r[dk]) { const d = new Date(r[dk]); r[dk] = new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-  for (const k in p.meta || {}) if (p.meta[k].headerDate) { const d = new Date(p.meta[k].headerDate); p.meta[k].headerDate = new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-  Object.assign(S, { data: Object.assign({ NCR: [], SOR: [], SWN: [], INC: [] }, p.data), meta: p.meta || {}, rpt: fromIso(p.rpt), period: p.period || 7, demo: !!p.demo });
+  const day = v => { const d = new Date(v); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+  for (const k in p.data) for (const r of p.data[k]) for (const dk of DATE_KEYS) if (r[dk]) r[dk] = day(r[dk]);
+  for (const k in p.meta || {}) if (p.meta[k].headerDate) p.meta[k].headerDate = day(p.meta[k].headerDate);
+  let to = fromIso(p.to || p.rpt), from = fromIso(p.from);
+  if (to && !from) from = addD(to, -((p.period || 7) - 1));
+  Object.assign(S, { data: Object.assign(emptyData(), p.data), meta: p.meta || {}, from, to, demo: !!p.demo });
   return true;
 }
 
@@ -347,48 +377,57 @@ function restore() {
    Analysis
    ===================================================================== */
 let A = null;
+const ACX_CLOSED = /^(closed|complete|completed|resolved|verified|done|accepted)$/;
+const eom = m => new Date(m.getFullYear(), m.getMonth() + 1, 0);
+const cnt = (rows, fn) => rows.reduce((n, r) => n + (fn(r) ? 1 : 0), 0);
+function ctx() {
+  const to = S.to || new Date(), from = S.from && S.from <= to ? S.from : addD(to, -6);
+  const per = days(to, from) + 1, prevEnd = addD(from, -1), prevStart = addD(from, -per);
+  const m0 = new Date(to.getFullYear(), to.getMonth() - 12, 1);
+  const months = Array.from({ length: 13 }, (_, i) => new Date(m0.getFullYear(), m0.getMonth() + i, 1));
+  return { rpt: to, perStart: from, per, prevStart, prevEnd, months, mLabels: months.map(m => MON[m.getMonth()] + " " + String(m.getFullYear()).slice(2)) };
+}
+function annotate(k, rows, rpt) {
+  for (const r of rows) {
+    if (k === "ACX") { const s = (r.status || "").toLowerCase(); r.isVoid = /cancel|void|delet/.test(s); r.isOpen = !r.isVoid && !ACX_CLOSED.test(s); r.isClosed = !r.isOpen && !r.isVoid; r.overdue = !!(r.isOpen && r.due && r.due < rpt); r.category = r.type || "(blank)"; }
+    else if (k === "SWN") { r.isVoid = false; r.isClosed = r.status === "CLOSED"; r.isOpen = !r.isClosed; }
+    else { r.isVoid = r.status === "TERMINATED"; r.isClosed = r.status === "CLOSED"; r.isOpen = !r.isVoid && !r.isClosed; }
+    r.age = r.isOpen && r.issue ? days(rpt, r.issue) : null;
+    r.bucket = r.age == null ? "" : r.age <= 7 ? BUCKETS[0] : r.age <= 30 ? BUCKETS[1] : r.age <= 60 ? BUCKETS[2] : BUCKETS[3];
+    r.toClose = r.isClosed && r.issue && r.closure ? days(r.closure, r.issue) : null;
+  }
+}
+// Stats for any register of findings (NCR, SOR, Aconex, Stop Work); works on the full set or a filtered subset
+function fStats(rows, C) {
+  const n = rows.length, closed = cnt(rows, r => r.isClosed), vd = cnt(rows, r => r.isVoid), tc = rows.filter(r => r.toClose != null);
+  return { rows, total: n, open: cnt(rows, r => r.isOpen), over30: cnt(rows, r => r.age > 30), over60: cnt(rows, r => r.age > 60),
+    major: cnt(rows, r => r.isOpen && r.severity === "Major"), overdue: cnt(rows, r => r.overdue),
+    issuedPer: cnt(rows, r => inR(r.issue, C.perStart, C.rpt)), issuedPrev: cnt(rows, r => inR(r.issue, C.prevStart, C.prevEnd)),
+    closedPer: cnt(rows, r => r.isClosed && inR(r.closure, C.perStart, C.rpt)), closedPrev: cnt(rows, r => r.isClosed && inR(r.closure, C.prevStart, C.prevEnd)),
+    closeRate: pct(closed, n - vd), onTime: pct(cnt(rows, r => r.onTime), n), avgClose: tc.length ? tc.reduce((s, r) => s + r.toClose, 0) / tc.length : 0,
+    buckets: BUCKETS.map(b => cnt(rows, r => r.bucket === b)),
+    mIssued: C.months.map(m => cnt(rows, r => inR(r.issue, m, eom(m)))),
+    mClosed: C.months.map(m => cnt(rows, r => r.isClosed && inR(r.closure, m, eom(m)))),
+    mOpen: C.months.map(m => { if (m > C.rpt) return null; const e = eom(m), end = e > C.rpt ? C.rpt : e;
+      return cnt(rows, r => r.issue && r.issue <= end && !r.isVoid) - cnt(rows, r => r.isClosed && r.closure && r.closure <= end); }) };
+}
+function iStats(rows, C) {
+  const rec = rows.filter(r => r.group === "Recordable" && r.date).map(r => +r.date), last = rec.length ? new Date(Math.max(...rec)) : null;
+  const g = (grp, a, b) => cnt(rows, r => r.group === grp && inR(r.date, a, b));
+  return { rows, total: rows.length, nm: cnt(rows, r => r.group === "Near Miss"), nmPer: g("Near Miss", C.perStart, C.rpt), nmPrev: g("Near Miss", C.prevStart, C.prevEnd),
+    per: cnt(rows, r => inR(r.date, C.perStart, C.rpt)), prev: cnt(rows, r => inR(r.date, C.prevStart, C.prevEnd)),
+    rec: cnt(rows, r => r.group === "Recordable"), fa: cnt(rows, r => r.group === "First Aid"), hipo: cnt(rows, r => r.hipo),
+    lost: rows.reduce((s, r) => s + (r.lostDays || 0), 0), open: cnt(rows, r => r.isOpen), lastRec: last, sinceRec: last ? days(C.rpt, last) : null,
+    mGroups: EVENT_GROUPS.map(grp => C.months.map(m => cnt(rows, r => r.group === grp && inR(r.date, m, eom(m))))) };
+}
 function analyze() {
-  const rpt = S.rpt || new Date(), per = S.period;
-  const perStart = addD(rpt, -(per - 1)), prevStart = addD(perStart, -per), prevEnd = addD(perStart, -1);
-  const out = { rpt, per, perStart, prevStart, prevEnd };
-  for (const k of ["NCR", "SOR", "SWN"]) for (const r of S.data[k]) if (r.raisedByRaw != null) r.raisedBy = person(r.raisedByRaw);
+  const C = ctx();
+  for (const k of ["NCR", "SOR", "SWN", "ACX"]) for (const r of S.data[k]) if (r.raisedByRaw != null) r.raisedBy = person(r.raisedByRaw);
   for (const r of S.data.INC) if (r.categoryRaw != null) r.category = canonCat(r.categoryRaw);
-  for (const k of ["NCR", "SOR"]) {
-    const rows = S.data[k].map(r => { const isOpen = !(r.status === "CLOSED" || r.status === "TERMINATED"); const age = isOpen && r.issue ? days(rpt, r.issue) : null;
-      return Object.assign(r, { isOpen, age, bucket: age == null ? "" : age <= 7 ? BUCKETS[0] : age <= 30 ? BUCKETS[1] : age <= 60 ? BUCKETS[2] : BUCKETS[3],
-        toClose: r.issue && r.closure ? days(r.closure, r.issue) : null }); });
-    const closed = rows.filter(r => r.status === "CLOSED").length, term = rows.filter(r => r.status === "TERMINATED").length;
-    const tc = rows.filter(r => r.toClose != null);
-    out[k] = { rows, total: rows.length, open: rows.filter(r => r.isOpen).length, over30: rows.filter(r => r.age > 30).length,
-      major: rows.filter(r => r.isOpen && r.severity === "Major").length,
-      issuedPer: rows.filter(r => inR(r.issue, perStart, rpt)).length, issuedPrev: rows.filter(r => inR(r.issue, prevStart, prevEnd)).length,
-      closedPer: rows.filter(r => r.status === "CLOSED" && inR(r.closure, perStart, rpt)).length, closedPrev: rows.filter(r => r.status === "CLOSED" && inR(r.closure, prevStart, prevEnd)).length,
-      closeRate: pct(closed, rows.length - term), onTime: pct(rows.filter(r => r.onTime).length, rows.length),
-      avgClose: tc.length ? tc.reduce((s, r) => s + r.toClose, 0) / tc.length : 0,
-      buckets: BUCKETS.map(b => rows.filter(r => r.bucket === b).length) };
-  }
-  const swn = S.data.SWN.map(r => Object.assign(r, { isOpen: r.status !== "CLOSED", age: r.status !== "CLOSED" && r.issue ? days(rpt, r.issue) : null }));
-  out.SWN = { rows: swn, total: swn.length, open: swn.filter(r => r.isOpen).length, per: swn.filter(r => inR(r.issue, perStart, rpt)).length, prev: swn.filter(r => inR(r.issue, prevStart, prevEnd)).length };
-  const inc = S.data.INC;
-  const rec = inc.filter(r => r.group === "Recordable" && r.date).map(r => r.date);
-  const last = rec.length ? new Date(Math.max(...rec)) : null;
-  out.INC = { rows: inc, total: inc.length, nm: inc.filter(r => r.group === "Near Miss").length,
-    nmPer: inc.filter(r => r.group === "Near Miss" && inR(r.date, perStart, rpt)).length, nmPrev: inc.filter(r => r.group === "Near Miss" && inR(r.date, prevStart, prevEnd)).length,
-    rec: inc.filter(r => r.group === "Recordable").length, fa: inc.filter(r => r.group === "First Aid").length, hipo: inc.filter(r => r.hipo).length,
-    lost: inc.reduce((s, r) => s + (r.lostDays || 0), 0), open: inc.filter(r => r.isOpen).length, lastRec: last, sinceRec: last ? days(rpt, last) : null };
-  // months: 13 ending in report month
-  const m0 = new Date(rpt.getFullYear(), rpt.getMonth() - 12, 1);
-  out.months = Array.from({ length: 13 }, (_, i) => new Date(m0.getFullYear(), m0.getMonth() + i, 1));
-  out.mLabels = out.months.map(m => MONTHS[m.getMonth()].replace(/^./, c => c.toUpperCase()) + " " + String(m.getFullYear()).slice(2));
-  const eom = m => new Date(m.getFullYear(), m.getMonth() + 1, 0);
-  for (const k of ["NCR", "SOR"]) {
-    const rows = out[k].rows;
-    out[k].mIssued = out.months.map(m => rows.filter(r => inR(r.issue, m, eom(m))).length);
-    out[k].mClosed = out.months.map(m => rows.filter(r => r.status === "CLOSED" && inR(r.closure, m, eom(m))).length);
-    out[k].mOpen = out.months.map(m => { const e = eom(m); if (m > rpt) return null; const end = e > rpt ? rpt : e;
-      return rows.filter(r => r.issue && r.issue <= end && r.status !== "TERMINATED").length - rows.filter(r => r.status === "CLOSED" && r.closure && r.closure <= end).length; });
-  }
-  out.INC.mGroups = EVENT_GROUPS.map(g => out.months.map(m => inc.filter(r => r.group === g && inR(r.date, m, eom(m))).length));
+  for (const k of ["NCR", "SOR", "SWN", "ACX"]) annotate(k, S.data[k], C.rpt);
+  const out = Object.assign({ C }, C);
+  for (const k of ["NCR", "SOR", "SWN", "ACX"]) out[k] = fStats(S.data[k], C);
+  out.INC = iStats(S.data.INC, C);
   out.checks = buildChecks(out);
   return out;
 }
@@ -411,6 +450,12 @@ function buildChecks(o) {
   add("warn", "NCR / SOR: closed without a final closure date", f.filter(r => r.status === "CLOSED" && !r.closure).map(refOf), "Needed for monthly close-outs and days to close.");
   add("warn", "NCR / SOR: unrecognised status", f.filter(r => !KNOWN_STATUS.includes(r.status)).map(r => `${refOf(r)} · ${r.status}`), "Counted as open. Use the standard tracker statuses.");
   add("warn", "NCR / SOR: raised-by name is blank", f.filter(r => !r.raisedBy).map(refOf), "Add the inspector name in the tracker.");
+  const acx = S.data.ACX;
+  if (acx.length) {
+    add("warn", "Aconex: no readable raised date", acx.filter(r => !r.issue).map(refOf), "Check the raised / created date column in the export.");
+    add("info", "Aconex: closed without a closed date", acx.filter(r => r.isClosed && !r.closure).map(refOf), "Days to close and monthly close-outs skip these issues.");
+    add("info", "Aconex: open without a due date", acx.filter(r => r.isOpen && !r.due).map(refOf), "These cannot be counted as past due.");
+  }
   add("info", "NCR: severity not graded", (o.NCR?.rows || []).filter(r => r.severity === "Not graded").map(refOf), "Grade new NCRs so the Major count means something.");
   return C;
 }
@@ -435,20 +480,19 @@ function opts(p, { stacked = false, horizontal = false, legend = true, onClick }
 const bar = (label, data, color, extra = {}) => Object.assign({ type: "bar", label, data, backgroundColor: color, borderRadius: 4, borderSkipped: "start", maxBarThickness: 26, categoryPercentage: .72, barPercentage: .9 }, extra);
 const stackBar = (label, data, color, p) => ({ type: "bar", label, data, backgroundColor: color, borderColor: p.surface, borderWidth: 1, maxBarThickness: 30, borderRadius: 0 });
 
+const kv = (r, key) => (typeof key === "function" ? key(r) : r[key]) || "(blank)";
+const topKeys = (rows, key, n) => [...countBy(rows, r => kv(r, key))].sort((a, b) => b[1] - a[1]).slice(0, n).map(x => x[0]);
 const CFG = {
-  issuedClosed: (p, k) => ({ type: "bar", data: { labels: A.mLabels, datasets: [bar("Issued", A[k].mIssued, p.s[0]), bar("Closed", A[k].mClosed, p.s[2])] }, options: opts(p) }),
-  backlog: (p) => ({ type: "line", data: { labels: A.mLabels, datasets: [["NCR", A.NCR.mOpen, p.s[0]], ["SOR", A.SOR.mOpen, p.s[1]]].map(([l, d, c]) => ({ label: l + " open", data: d, borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0, spanGaps: false })) }, options: opts(p) }),
-  age: (p, onClick) => ({ type: "bar", data: { labels: BUCKETS, datasets: [bar("NCR", A.NCR.buckets, p.s[0]), bar("SOR", A.SOR.buckets, p.s[1])] }, options: opts(p, { onClick }) }),
-  events: (p) => ({ type: "bar", data: { labels: A.mLabels, datasets: EVENT_GROUPS.map((g, i) => stackBar(g, A.INC.mGroups[i], p.s[i], p)) }, options: opts(p, { stacked: true }) }),
-  topCats: (p, rows, onClick, n = 8) => { const m = [...countBy(rows, r => r.category)].sort((a, b) => b[1] - a[1]).slice(0, n);
-    return { type: "bar", data: { labels: m.map(x => x[0]), datasets: [bar("Events", m.map(x => x[1]), p.s[0])] }, options: opts(p, { horizontal: true, legend: false, onClick }) }; },
-  category: (p, k, onClick) => { const rows = A[k].rows; const cats = [...countBy(rows, r => r.category)].sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0]);
-    return { type: "bar", data: { labels: cats, datasets: [stackBar("Open", cats.map(c => rows.filter(r => r.category === c && r.isOpen).length), p.s[1], p), stackBar("Closed / terminated", cats.map(c => rows.filter(r => r.category === c && !r.isOpen).length), p.closed, p)] }, options: opts(p, { stacked: true, horizontal: true, onClick }) }; },
-  status: (p, k, onClick) => { const st = ["OPEN", "REJECTED", "PENDING", "RESPONDED"]; return { type: "bar", data: { labels: st.map(s => STATUS[s][0]), datasets: [bar("Open items", st.map(s => A[k].rows.filter(r => r.status === s).length), p.s[0])] }, options: opts(p, { horizontal: true, legend: false, onClick }) }; },
-  inspectors: (p) => { const all = [...A.NCR.rows, ...A.SOR.rows]; const top = [...countBy(all, r => r.raisedBy || "(blank)")].sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0]);
-    return { type: "bar", data: { labels: top, datasets: [stackBar("NCR", top.map(n => A.NCR.rows.filter(r => (r.raisedBy || "(blank)") === n).length), p.s[0], p), stackBar("SOR", top.map(n => A.SOR.rows.filter(r => (r.raisedBy || "(blank)") === n).length), p.s[1], p)] }, options: opts(p, { stacked: true, horizontal: true }) }; },
-  swnThemes: (p) => { const th = [...SWN_THEMES.map(t => t[0]), "Other"].filter(t => A.SWN.rows.some(r => r.theme === t));
-    return { type: "bar", data: { labels: th, datasets: [bar("Issued", th.map(t => A.SWN.rows.filter(r => r.theme === t).length), p.s[0]), bar("Still open", th.map(t => A.SWN.rows.filter(r => r.theme === t && r.isOpen).length), p.s[1])] }, options: opts(p, { horizontal: true }) }; },
+  monthly: (p, st, names = ["Issued", "Closed"]) => ({ type: "bar", data: { labels: A.mLabels, datasets: [bar(names[0], st.mIssued, p.s[0]), bar(names[1], st.mClosed, p.s[2])] }, options: opts(p) }),
+  backlog: (p, series) => ({ type: "line", data: { labels: A.mLabels, datasets: series.map(([l, st], i) => ({ label: l, data: st.mOpen, borderColor: p.s[i], backgroundColor: p.s[i], borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0 })) }, options: opts(p, { legend: series.length > 1 }) }),
+  age: (p, series, onClick) => ({ type: "bar", data: { labels: BUCKETS, datasets: series.map(([l, st], i) => bar(l, st.buckets, p.s[i])) }, options: opts(p, { onClick, legend: series.length > 1 }) }),
+  events: (p, st) => ({ type: "bar", data: { labels: A.mLabels, datasets: EVENT_GROUPS.map((g, i) => stackBar(g, st.mGroups[i], p.s[i], p)) }, options: opts(p, { stacked: true }) }),
+  topBy: (p, rows, key, onClick, n = 8, label = "Items") => { const keys = topKeys(rows, key, n);
+    return { type: "bar", data: { labels: keys, datasets: [bar(label, keys.map(k => cnt(rows, r => kv(r, key) === k)), p.s[0])] }, options: opts(p, { horizontal: true, legend: false, onClick }) }; },
+  split: (p, rows, key, onClick, n = 8) => { const keys = topKeys(rows, key, n);
+    return { type: "bar", data: { labels: keys, datasets: [stackBar("Open", keys.map(k => cnt(rows, r => kv(r, key) === k && r.isOpen)), p.s[1], p), stackBar("Closed / terminated", keys.map(k => cnt(rows, r => kv(r, key) === k && !r.isOpen)), p.closed, p)] }, options: opts(p, { stacked: true, horizontal: true, onClick }) }; },
+  swnThemes: (p, rows, onClick) => { const th = [...SWN_THEMES.map(t => t[0]), "Other"].filter(t => rows.some(r => r.theme === t));
+    return { type: "bar", data: { labels: th, datasets: [bar("Issued", th.map(t => cnt(rows, r => r.theme === t)), p.s[0]), bar("Still open", th.map(t => cnt(rows, r => r.theme === t && r.isOpen)), p.s[1])] }, options: opts(p, { horizontal: true, onClick }) }; },
 };
 const live = {};
 function draw(id, make) { const el = document.getElementById(id); if (!el) return; if (live[id]) live[id].destroy(); live[id] = new Chart(el, make(pal())); }
@@ -457,55 +501,83 @@ function destroyAll() { for (const k in live) { live[k].destroy(); delete live[k
 /* =====================================================================
    Views
    ===================================================================== */
-const VIEWS = [["overview", "Overview"], ["ncr", "NCR"], ["sor", "SOR"], ["stop-work", "Stop Work"], ["incidents", "Incidents"], ["open-items", "Open Items"], ["checks", "Data Checks"], ["history", "History"], ["settings", "Settings"]];
+const VIEWS = [["overview", "Overview"], ["ncr", "NCR"], ["sor", "SOR"], ["stop-work", "Stop Work"], ["incidents", "Incidents"], ["aconex", "Aconex Issues"], ["open-items", "Open Items"], ["checks", "Data Checks"], ["history", "History"], ["settings", "Settings"]];
 function route() { const h = location.hash.slice(1); return VIEWS.some(v => v[0] === h) ? h : "overview"; }
 function renderTabs() {
   const cur = route(), nChecks = A.checks.filter(c => c.sev === "warn" && c.items.length).length;
-  const count = { ncr: A.NCR.open, sor: A.SOR.open, "stop-work": A.SWN.open, "open-items": A.NCR.open + A.SOR.open, checks: nChecks };
+  const count = { ncr: A.NCR.open, sor: A.SOR.open, "stop-work": A.SWN.open, aconex: S.data.ACX.length ? A.ACX.open : null, "open-items": A.NCR.open + A.SOR.open + A.ACX.open, checks: nChecks };
   $("#tabs").innerHTML = VIEWS.map(([id, l]) => `<a href="#${id}" ${id === cur ? 'aria-current="page"' : ""}>${l}${count[id] != null && (id !== "checks" || nChecks) ? `<span class="cnt${id === "checks" ? " alert" : ""}">${count[id]}</span>` : ""}</a>`).join("");
 }
 function tile(l, v, s, st = "", go = "", unit = "") {
   const inner = `<span class="l">${l}</span><span class="v">${v}${unit ? `<small>${unit}</small>` : ""}</span><span class="s">${s}</span>`;
   return go ? `<button type="button" class="tile" data-s="${st}" data-go="${go}">${inner}</button>` : `<div class="tile" data-s="${st}">${inner}</div>`;
 }
+const perTxt = () => `${fmt(A.perStart, {})} – ${fmtL(A.rpt)}`;
 function delta(now, prev) { const d = now - prev; const sign = d > 0 ? "+" : d < 0 ? "−" : "±"; return `<span class="delta">${sign}${Math.abs(d)}</span> vs previous ${A.per} days (${prev})`; }
 function header() {
   const src = Object.keys(DATASETS).filter(k => S.meta[k]).map(k => { const m = S.meta[k]; return `<span class="chip"><b>${DATASETS[k].label}</b> ${S.data[k].length}<i>${esc(m.file || "")}${m.headerDate ? " · " + fmt(m.headerDate) : ""}</i></span>`; }).join("");
-  const banner = S.demo ? `<div class="banner"><span><b>Demo data.</b> These figures are fictional examples. Load your NCR / SOR tracker and the contractor incident log to see the real position.</span><button class="btn" type="button" data-act="load">Load trackers</button></div>` : "";
-  return `${banner}<div class="meta"><span>Period <b>${fmt(A.perStart, { day: "2-digit", month: "short" })} – ${fmtL(A.rpt)}</b> (${A.per} days)</span>${src}</div>`;
+  const banner = S.demo ? `<div class="banner"><span><b>Demo data.</b> These figures are fictional examples. Load your NCR / SOR tracker, the contractor incident log and the Aconex issues export to see the real position.</span><button class="btn" type="button" data-act="load">Load trackers</button></div>` : "";
+  return `${banner}<div class="meta"><span>Period <b>${perTxt()}</b> (${A.per} day${A.per > 1 ? "s" : ""}) · ageing measured to ${fmtL(A.rpt)}</span>${src}</div>`;
 }
+const card = (id, h, sub, tall) => `<div class="card"><h3>${h}</h3><p class="sub">${sub}</p><div class="cv${tall ? " tall" : ""}"><canvas id="${id}" role="img" aria-label="${esc(h)}"></canvas></div></div>`;
 
+/* ---------- filter bar (drives tiles, charts and table) ---------- */
+const match = (q, ...f) => !q || f.join(" ").toLowerCase().includes(q.toLowerCase());
+const uniq = (rows, k) => [...new Set(rows.map(r => typeof k === "function" ? k(r) : r[k]).filter(Boolean))].sort();
+const sel = (id, label, cur, opts) => `<label class="ctl" for="${id}">${label}<select id="${id}"><option value="">All</option>${opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`; }).join("")}</select></label>`;
+function filterBar(k, fields, shown, total, noun) {
+  const st = UI[k], active = fields.filter(f => st[f.key]).map(f => `${f.label}: ${(o => Array.isArray(o) ? o[1] : st[f.key])(f.opts.find(o => (Array.isArray(o) ? o[0] : o) === st[f.key]))}`);
+  if (st.q) active.unshift(`Search “${st.q}”`);
+  return `<section class="fbar${active.length ? " on" : ""}"><div class="filters"><span class="flab">Filter</span>
+    <input type="search" id="q-${k}" placeholder="Search…" value="${esc(st.q)}" aria-label="Search">
+    ${fields.map(f => sel(`${f.key}-${k}`, f.label, st[f.key], f.opts)).join("")}
+    ${active.length ? `<button class="btn" type="button" data-clear="${k}">Clear filters</button>` : ""}</div>
+    <div class="fsum">${active.length ? `Showing <b>${shown}</b> of ${total} ${noun} · ${active.map(esc).join(" · ")}. Tiles and charts below use this selection.` : `Showing all ${total} ${noun}. Pick a filter, or click a bar in a chart, to narrow every tile and chart below.`}</div></section>`;
+}
+function wireFilters(k, keys) {
+  const st = UI[k];
+  const q = document.getElementById(`q-${k}`); if (q) q.addEventListener("input", () => { st.q = q.value; render(`q-${k}`); });
+  for (const key of keys) { const el = document.getElementById(`${key}-${k}`); if (el) el.addEventListener("change", () => { st[key] = el.value; render(); }); }
+  document.querySelectorAll(`[data-clear="${k}"]`).forEach(b => b.addEventListener("click", () => { st.q = ""; for (const key of keys) st[key] = ""; render(); }));
+}
+const setF = (k, key, v) => { UI[k][key] = v; render(); };
+
+/* ---------- overview ---------- */
 function vOverview() {
-  const N = A.NCR, R = A.SOR, I = A.INC, W = A.SWN;
+  const N = A.NCR, R = A.SOR, I = A.INC, W = A.SWN, X = A.ACX, hasX = S.data.ACX.length > 0;
   return `${header()}
-  <section><h2>This period<small>${fmt(A.perStart, { day: "2-digit", month: "short" })} – ${fmt(A.rpt, { day: "2-digit", month: "short" })}</small></h2><div class="tiles">
+  <section><h2>This period<small>${perTxt()}</small></h2><div class="tiles">
     ${tile("NCRs issued", N.issuedPer, delta(N.issuedPer, N.issuedPrev), "info", "ncr")}
     ${tile("SORs issued", R.issuedPer, delta(R.issuedPer, R.issuedPrev), "info", "sor")}
     ${tile("NCRs / SORs closed", `${N.closedPer}<small>/</small>${R.closedPer}`, `Previous ${A.per} days: ${N.closedPrev} / ${R.closedPrev}`, "good")}
     ${tile("Near misses reported", I.nmPer, delta(I.nmPer, I.nmPrev), "info", "incidents")}
-    ${tile("Stop work notices", W.per, delta(W.per, W.prev), W.per ? "warn" : "", "stop-work")}
+    ${tile("Stop work notices", W.issuedPer, delta(W.issuedPer, W.issuedPrev), W.issuedPer ? "warn" : "", "stop-work")}
+    ${hasX ? tile("Aconex issues raised", X.issuedPer, delta(X.issuedPer, X.issuedPrev), "info", "aconex") : ""}
   </div></section>
-  <section><h2>Position at report date</h2><div class="tiles">
+  <section><h2>Position at ${fmtL(A.rpt)}</h2><div class="tiles">
     ${tile("Open NCRs", N.open, `${N.over30} open over 30 days · ${N.major} Major`, N.over30 ? "crit" : "good", "ncr")}
     ${tile("Open SORs", R.open, `${R.over30} open over 30 days`, R.over30 ? "crit" : "good", "sor")}
+    ${hasX ? tile("Open Aconex issues", X.open, `${X.overdue} past due date`, X.overdue ? "crit" : "good", "aconex") : ""}
     ${tile("NCR close-out rate", P(N.closeRate), `Closed ÷ issued, excluding terminated · SOR ${P(R.closeRate)}`, N.closeRate >= .85 ? "good" : "warn")}
     ${tile("Contractor 1st response on time", P(N.onTime), `NCRs answered within 7 days · SOR ${P(R.onTime)}`, N.onTime >= .8 ? "good" : N.onTime >= .5 ? "warn" : "crit")}
     ${tile("Average days to close NCR", N.avgClose.toFixed(0), `SOR ${R.avgClose.toFixed(0)} days`, "", "", "days")}
     ${tile("Days since last recordable", I.sinceRec == null ? "—" : I.sinceRec, I.lastRec ? `Last on ${fmtL(I.lastRec)} · ${I.rec} recordable, ${I.fa} first aid to date` : "No recordable injury in the log", I.sinceRec == null || I.sinceRec > 90 ? "good" : "warn", "incidents")}
   </div></section>
-  <section><h2>Trends<small>last 13 months</small></h2><div class="grid2">
-    <div class="card"><h3>NCRs issued and closed</h3><p class="sub">Per month, by issue date and final closure date</p><div class="cv"><canvas id="c1" role="img" aria-label="NCRs issued and closed per month"></canvas></div></div>
-    <div class="card"><h3>SORs issued and closed</h3><p class="sub">Per month, by issue date and final closure date</p><div class="cv"><canvas id="c2" role="img" aria-label="SORs issued and closed per month"></canvas></div></div>
-    <div class="card"><h3>Open backlog at month end</h3><p class="sub">Issued to date minus closed to date (terminated excluded)</p><div class="cv"><canvas id="c3" role="img" aria-label="Open NCR and SOR backlog"></canvas></div></div>
-    <div class="card"><h3>How long open items have been open</h3><p class="sub">Days from issue to report date · click a bar to see the items</p><div class="cv"><canvas id="c4" role="img" aria-label="Open items by age"></canvas></div></div>
-    <div class="card"><h3>Incident log events per month</h3><p class="sub">Contractor incident and near-miss log, by event type</p><div class="cv"><canvas id="c5" role="img" aria-label="Events per month by type"></canvas></div></div>
-    <div class="card"><h3>Most frequent event categories</h3><p class="sub">All logged events to date</p><div class="cv"><canvas id="c6" role="img" aria-label="Top event categories"></canvas></div></div>
+  <section><h2>Trends<small>13 months to ${fmtL(A.rpt)}</small></h2><div class="grid2">
+    ${card("c1", "NCRs issued and closed", "Per month, by issue date and final closure date")}
+    ${card("c2", "SORs issued and closed", "Per month, by issue date and final closure date")}
+    ${card("c3", "Open backlog at month end", "Issued to date minus closed to date (terminated excluded)")}
+    ${card("c4", "How long open items have been open", "Days from issue to the period end · click a bar to see the items")}
+    ${card("c5", "Incident log events per month", "Contractor incident and near-miss log, by event type")}
+    ${card("c6", "Most frequent event categories", "All logged events to date · click a bar to open them")}
   </div></section>`;
 }
 function afterOverview() {
-  draw("c1", p => CFG.issuedClosed(p, "NCR")); draw("c2", p => CFG.issuedClosed(p, "SOR")); draw("c3", CFG.backlog);
-  draw("c4", p => CFG.age(p, (e, els) => { if (!els.length) return; UI.OPEN.bucket = BUCKETS[els[0].index]; UI.OPEN.ds = els[0].datasetIndex ? "SOR" : "NCR"; location.hash = "open-items"; }));
-  draw("c5", CFG.events); draw("c6", p => CFG.topCats(p, A.INC.rows));
+  draw("c1", p => CFG.monthly(p, A.NCR)); draw("c2", p => CFG.monthly(p, A.SOR));
+  draw("c3", p => CFG.backlog(p, [["NCR open", A.NCR], ["SOR open", A.SOR]]));
+  draw("c4", p => CFG.age(p, [["NCR", A.NCR], ["SOR", A.SOR]], (e, els) => { if (!els.length) return; UI.OPEN.bucket = BUCKETS[els[0].index]; UI.OPEN.ds = els[0].datasetIndex ? "SOR" : "NCR"; location.hash = "open-items"; }));
+  draw("c5", p => CFG.events(p, A.INC));
+  draw("c6", p => CFG.topBy(p, A.INC.rows, "category", (e, els, ch) => { if (!els.length) return; UI.INC.cat = ch.data.labels[els[0].index]; location.hash = "incidents"; }, 8, "Events"));
 }
 
 /* ---------- generic table ---------- */
@@ -518,104 +590,137 @@ function table(id, cols, rows, st) {
   <tbody>${shown.map(r => `<tr>${cols.map(c => `<td class="${c.cls || ""}">${c.h ? c.h(r) : esc(r[c.k])}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" style="text-align:center;color:var(--muted);padding:24px">No items match these filters.</td></tr>`}</tbody></table></div>
   <div class="rowcount">${rows.length} item${rows.length === 1 ? "" : "s"}${rows.length > shown.length ? ` · showing the first ${shown.length}` : ""}</div>`;
 }
-function wireSort(id, st) { const t = document.getElementById(id); if (!t) return; t.querySelectorAll("th").forEach(th => th.addEventListener("click", () => { const k = th.dataset.k; st.sort = st.sort[0] === k ? [k, -st.sort[1]] : [k, k === "age" || k === "issue" || k === "date" ? -1 : 1]; render(); })); }
+function wireSort(id, st) { const t = document.getElementById(id); if (!t) return; t.querySelectorAll("th").forEach(th => th.addEventListener("click", () => { const k = th.dataset.k; st.sort = st.sort[0] === k ? [k, -st.sort[1]] : [k, ["age", "issue", "date", "due"].includes(k) ? -1 : 1]; render(); })); }
 const pill = s => { const m = STATUS[s]; return m ? `<span class="pill ${m[1]}">${m[0]}</span>` : `<span class="pill p-mute">${esc(s)}</span>`; };
+const gPill = r => `<span class="pill ${r.isOpen ? (r.overdue ? "p-crit" : "p-warn") : r.isVoid ? "p-mute" : "p-good"}">${esc(r.status || "(blank)")}</span>`;
 const ageH = r => r.age == null ? "" : `<span class="age ${r.age > 60 ? "a60" : r.age > 30 ? "a30" : ""}">${r.age} d</span>`;
 const dH = k => r => fmt(r[k]);
-const sel = (id, label, cur, opts) => `<label class="ctl" for="${id}">${label}<select id="${id}"><option value="">All</option>${opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`; }).join("")}</select></label>`;
-const uniq = (rows, k) => [...new Set(rows.map(r => r[k]).filter(Boolean))].sort();
+const statusPass = v => r => !v || (v === "open" ? r.isOpen : v === "over30" ? r.age > 30 : v === "closed" ? r.isClosed : v === "overdue" ? r.overdue : r.status === v);
+function listHead(k, title, opts) { return `<div class="filters" style="margin-bottom:10px"><h2 style="margin:0 auto 0 0">${title}</h2>${sel(`st-${k}`, "Show", UI[k].st, opts)}</div>`; }
+function wireList(k, tid) { wireSort(tid, UI[k]); const el = document.getElementById(`st-${k}`); if (el) el.addEventListener("change", () => { UI[k].st = el.value; render(); }); }
 
+/* ---------- NCR / SOR ---------- */
 function vRegister(k) {
-  const st = UI[k], D = A[k], rows = D.rows;
-  const f = rows.filter(r => (!st.st || (st.st === "open" ? r.isOpen : st.st === "over30" ? r.age > 30 : r.status === st.st))
-    && (!st.cat || r.category === st.cat) && (!st.who || r.raisedBy === st.who) && (!st.sev || r.severity === st.sev)
-    && (!st.q || (r.ref + " " + r.desc + " " + r.remarks).toLowerCase().includes(st.q.toLowerCase())));
-  const stOpts = [["open", "All open"], ["over30", "Open over 30 days"], ...KNOWN_STATUS.map(s => [s, STATUS[s][0]])];
+  const st = UI[k], all = A[k].rows;
+  const scope = all.filter(r => (!st.cat || r.category === st.cat) && (!st.who || r.raisedBy === st.who) && (!st.sev || r.severity === st.sev) && match(st.q, r.ref, r.desc, r.remarks));
+  const D = fStats(scope, A.C); A.view = { scope };
+  const fields = [{ key: "cat", label: "Category", opts: uniq(all, "category") }, { key: "who", label: "Raised by", opts: uniq(all, "raisedBy") }, ...(k === "NCR" ? [{ key: "sev", label: "Severity", opts: uniq(all, "severity") }] : [])];
   const cols = [{ k: "ref", l: `${k} reference`, h: r => `<span class="mono">${esc(r.ref)}</span>` }, { k: "category", l: "Cat.", h: r => `<span class="tag">${esc(r.category)}</span>` },
     { k: "desc", l: "Description", cls: "desc" }, { k: "issue", l: "Issued", cls: "d", h: dH("issue") }, { k: "age", l: "Open for", cls: "n", h: ageH },
     { k: "status", l: "Status", h: r => pill(r.status) }, ...(k === "NCR" ? [{ k: "severity", l: "Severity" }] : []), { k: "raisedBy", l: "Raised by" }, { k: "closure", l: "Closed", cls: "d", h: dH("closure") }];
-  return `${header()}
+  return `${header()}${filterBar(k, fields, scope.length, all.length, `${k}s`)}
   <section><div class="tiles">
-    ${tile(`Open ${k}s`, D.open, `of ${D.total} issued to date`, D.over30 ? "crit" : "good")}
-    ${tile("Open over 30 days", D.over30, `${D.buckets[3]} open over 60 days`, D.over30 ? "crit" : "good")}
+    ${tile("Issued in period", D.issuedPer, delta(D.issuedPer, D.issuedPrev), "info")}
+    ${tile("Closed in period", D.closedPer, `Previous ${A.per} days: ${D.closedPrev}`, "good")}
+    ${tile(`Open ${k}s`, D.open, `of ${D.total} issued to date${k === "NCR" ? ` · ${D.major} Major` : ""}`, D.over30 ? "crit" : "good")}
+    ${tile("Open over 30 days", D.over30, `${D.over60} open over 60 days`, D.over30 ? "crit" : "good")}
     ${tile("Close-out rate", P(D.closeRate), "Closed ÷ issued, excluding terminated", D.closeRate >= .85 ? "good" : "warn")}
     ${tile("1st response on time", P(D.onTime), "Contractor answered within 7 days", D.onTime >= .8 ? "good" : D.onTime >= .5 ? "warn" : "crit")}
     ${tile("Average days to close", D.avgClose.toFixed(0), "Issue date to final closure", "", "", "days")}
   </div></section>
   <section><div class="grid2">
-    <div class="card"><h3>${k}s by category</h3><p class="sub">Top 8 categories · click a bar to filter the register</p><div class="cv"><canvas id="rc1" role="img" aria-label="${k}s by category"></canvas></div></div>
-    <div class="card"><h3>Where open ${k}s are stuck</h3><p class="sub">Current status of open items · click to filter</p><div class="cv"><canvas id="rc2" role="img" aria-label="Open ${k}s by status"></canvas></div></div>
+    ${card("rc1", `${k}s issued and closed`, "Per month, last 13 months")}
+    ${card("rc2", `How long open ${k}s have been open`, "Days from issue to the period end")}
+    ${card("rc3", `${k}s by category`, "Open vs closed · click a bar to filter")}
+    ${card("rc4", `Where open ${k}s are stuck`, "Current status · click a bar to list those items")}
+    ${card("rc5", "Raised by inspector", "Open vs closed · click a bar to filter")}
+    ${card("rc6", "Open backlog at month end", "Issued to date minus closed to date")}
   </div></section>
-  <section><h2>${k} register</h2><div class="filters" style="margin-bottom:10px">
-    <input type="search" id="q-${k}" placeholder="Search reference, description or remarks" value="${esc(st.q)}" aria-label="Search">
-    ${sel(`st-${k}`, "Status", st.st, stOpts)}${sel(`cat-${k}`, "Category", st.cat, uniq(rows, "category"))}${sel(`who-${k}`, "Raised by", st.who, uniq(rows, "raisedBy"))}
-    ${k === "NCR" ? sel(`sev-${k}`, "Severity", st.sev, uniq(rows, "severity")) : ""}
-    <button class="btn" type="button" data-reset="${k}">Reset</button></div>
-  ${table(`t-${k}`, cols, f, st)}</section>`;
+  <section id="list-${k}">${listHead(k, `${k} register`, [["open", "All open"], ["over30", "Open over 30 days"], ["closed", "Closed"], ...KNOWN_STATUS.map(s => [s, STATUS[s][0]])])}
+  ${table(`t-${k}`, cols, scope.filter(statusPass(st.st)), st)}</section>`;
 }
 function afterRegister(k) {
-  const st = UI[k];
-  draw("rc1", p => CFG.category(p, k, (e, els, ch) => { if (!els.length) return; st.cat = ch.data.labels[els[0].index]; st.st = els[0].datasetIndex === 0 ? "open" : ""; render(); }));
-  draw("rc2", p => CFG.status(p, k, (e, els) => { if (!els.length) return; st.st = ["OPEN", "REJECTED", "PENDING", "RESPONDED"][els[0].index]; render(); }));
-  wireSort(`t-${k}`, st);
-  const on = (id, key, ev = "change") => { const el = document.getElementById(id); if (el) el.addEventListener(ev, () => { st[key] = el.value; render(key === "q" ? id : null); }); };
-  on(`q-${k}`, "q", "input"); on(`st-${k}`, "st"); on(`cat-${k}`, "cat"); on(`who-${k}`, "who"); on(`sev-${k}`, "sev");
+  const scope = A.view.scope, D = fStats(scope, A.C), st = UI[k];
+  draw("rc1", p => CFG.monthly(p, D)); draw("rc2", p => CFG.age(p, [[k, D]]));
+  draw("rc3", p => CFG.split(p, scope, "category", (e, els, ch) => { if (els.length) setF(k, "cat", ch.data.labels[els[0].index]); }));
+  draw("rc4", p => CFG.topBy(p, scope.filter(r => r.isOpen), r => STATUS[r.status] ? STATUS[r.status][0] : r.status, (e, els, ch) => { if (!els.length) return; const lab = ch.data.labels[els[0].index];
+    st.st = KNOWN_STATUS.find(s => STATUS[s][0] === lab) || ""; render(); document.getElementById(`list-${k}`)?.scrollIntoView({ block: "start" }); }, 8, "Open items"));
+  draw("rc5", p => CFG.split(p, scope, "raisedBy", (e, els, ch) => { if (els.length) setF(k, "who", ch.data.labels[els[0].index]); }));
+  draw("rc6", p => CFG.backlog(p, [[`${k} open`, D]]));
+  wireFilters(k, ["cat", "who", "sev"]); wireList(k, `t-${k}`);
 }
 
+/* ---------- Stop work ---------- */
 function vSWN() {
-  const st = UI.SWN, W = A.SWN;
-  const f = W.rows.filter(r => (!st.st || (st.st === "open" ? r.isOpen : !r.isOpen)) && (!st.q || (r.ref + " " + r.desc).toLowerCase().includes(st.q.toLowerCase())));
-  const tc = W.rows.filter(r => r.issue && r.closure); const avg = tc.length ? tc.reduce((s, r) => s + days(r.closure, r.issue), 0) / tc.length : 0;
+  const st = UI.SWN, all = A.SWN.rows, scope = all.filter(r => (!st.theme || r.theme === st.theme) && match(st.q, r.ref, r.desc)); A.view = { scope };
+  const D = fStats(scope, A.C);
   const cols = [{ k: "ref", l: "Notice reference", h: r => `<span class="mono">${esc(r.ref)}</span>` }, { k: "desc", l: "Description", cls: "desc" }, { k: "theme", l: "Theme" },
     { k: "issue", l: "Issued", cls: "d", h: dH("issue") }, { k: "closure", l: "Returned to contractor", cls: "d", h: dH("closure") },
-    { k: "days", l: "Days to close", cls: "n", v: r => r.issue && r.closure ? days(r.closure, r.issue) : null, h: r => r.issue && r.closure ? days(r.closure, r.issue) : "" },
-    { k: "status", l: "Status", h: r => r.isOpen ? `<span class="pill p-crit">${esc(title(r.status))}</span>` : pill("CLOSED") }, { k: "contractorRef", l: "Contractor reply", h: r => `<span class="mono">${esc(r.contractorRef)}</span>` }];
-  return `${header()}
-  <section><div class="tiles">${tile("Stop work notices issued", W.total, "To date", "warn")}${tile("Still open", W.open, W.open ? "Work remains suspended or response pending" : "All notices closed", W.open ? "crit" : "good")}
-    ${tile("Issued this period", W.per, delta(W.per, W.prev), W.per ? "warn" : "")}${tile("Average days to close", avg.toFixed(0), "Issue date to return", "", "", "days")}</div></section>
-  <section class="card"><h3>Stop work notices by theme</h3><p class="sub">Theme is assigned from keywords in the description</p><div class="cv"><canvas id="sc1" role="img" aria-label="Stop work notices by theme"></canvas></div></section>
-  <section><h2>Stop work register</h2><div class="filters" style="margin-bottom:10px"><input type="search" id="q-SWN" placeholder="Search reference or description" value="${esc(st.q)}" aria-label="Search">
-    ${sel("st-SWN", "Status", st.st, [["open", "Open"], ["closed", "Closed"]])}</div>${table("t-SWN", cols, f, st)}</section>`;
+    { k: "toClose", l: "Days to close", cls: "n", h: r => r.toClose ?? "" }, { k: "status", l: "Status", h: r => r.isOpen ? `<span class="pill p-crit">${esc(title(r.status))}</span>` : pill("CLOSED") },
+    { k: "contractorRef", l: "Contractor reply", h: r => `<span class="mono">${esc(r.contractorRef)}</span>` }];
+  return `${header()}${filterBar("SWN", [{ key: "theme", label: "Theme", opts: uniq(all, "theme") }], scope.length, all.length, "notices")}
+  <section><div class="tiles">${tile("Issued in period", D.issuedPer, delta(D.issuedPer, D.issuedPrev), D.issuedPer ? "warn" : "")}${tile("Issued to date", D.total, "Stop work notices", "warn")}
+    ${tile("Still open", D.open, D.open ? "Work suspended or response pending" : "All notices closed", D.open ? "crit" : "good")}${tile("Average days to close", D.avgClose.toFixed(0), "Issue date to return", "", "", "days")}</div></section>
+  <section><div class="grid2">${card("sc1", "Stop work notices by theme", "Theme from description keywords · click a bar to filter")}${card("sc2", "Notices issued and closed", "Per month, last 13 months")}</div></section>
+  <section>${listHead("SWN", "Stop work register", [["open", "Open"], ["closed", "Closed"]])}${table("t-SWN", cols, scope.filter(statusPass(st.st)), st)}</section>`;
 }
-function afterSWN() { draw("sc1", CFG.swnThemes); wireSort("t-SWN", UI.SWN);
-  $("#q-SWN").addEventListener("input", e => { UI.SWN.q = e.target.value; render("q-SWN"); }); $("#st-SWN").addEventListener("change", e => { UI.SWN.st = e.target.value; render(); }); }
+function afterSWN() { const scope = A.view.scope;
+  draw("sc1", p => CFG.swnThemes(p, scope, (e, els, ch) => { if (els.length) setF("SWN", "theme", ch.data.labels[els[0].index]); })); draw("sc2", p => CFG.monthly(p, fStats(scope, A.C)));
+  wireFilters("SWN", ["theme"]); wireList("SWN", "t-SWN"); }
 
+/* ---------- Incidents ---------- */
 function vINC() {
-  const st = UI.INC, I = A.INC;
-  const f = I.rows.filter(r => (!st.grp || r.group === st.grp) && (!st.cat || r.category === st.cat) && (!st.st || (st.st === "open" ? r.isOpen : !r.isOpen))
-    && (!st.q || (r.desc + " " + r.type + " " + r.category).toLowerCase().includes(st.q.toLowerCase())));
+  const st = UI.INC, all = A.INC.rows;
+  const scope = all.filter(r => (!st.grp || r.group === st.grp) && (!st.cat || r.category === st.cat) && (!st.st || (st.st === "open" ? r.isOpen : !r.isOpen)) && match(st.q, r.desc, r.type, r.category)); A.view = { scope };
+  const I = iStats(scope, A.C);
   const cols = [{ k: "date", l: "Date", cls: "d", h: r => r.date ? fmt(r.date) : `<span class="pill p-crit">${esc(r.dateText || "missing")}</span>` },
     { k: "type", l: "Type", h: r => `<span class="pill ${r.group === "Recordable" ? "p-crit" : r.group === "First Aid" ? "p-serious" : r.group === "Near Miss" ? "p-info" : "p-mute"}">${esc(r.type)}</span>` },
     { k: "category", l: "Category" }, { k: "desc", l: "Description", cls: "desc", h: r => esc(r.desc.length > 260 ? r.desc.slice(0, 257) + "…" : r.desc) },
     { k: "hipo", l: "High potential", h: r => r.hipo ? `<span class="pill p-crit">Yes</span>` : "" }, { k: "lostDays", l: "Lost days", cls: "n", h: r => r.lostDays || "" },
     { k: "statusRaw", l: "Log status", h: r => r.isOpen ? `<span class="pill p-warn">${esc(r.statusRaw || "Blank")}</span>` : pill("CLOSED") }];
-  return `${header()}
-  <section><div class="tiles">${tile("Near misses", I.nm, `${I.nmPer} this period`, "info")}${tile("Recordable injuries", I.rec, `${I.lost} lost work days to date`, I.rec ? "crit" : "good")}
+  return `${header()}${filterBar("INC", [{ key: "grp", label: "Type", opts: EVENT_GROUPS }, { key: "cat", label: "Category", opts: uniq(all, "category") }, { key: "st", label: "Log status", opts: [["open", "Not closed"], ["closed", "Closed"]] }], scope.length, all.length, "log entries")}
+  <section><div class="tiles">${tile("Events in period", I.per, delta(I.per, I.prev), "info")}${tile("Near misses", I.nm, `${I.nmPer} in period`, "info")}${tile("Recordable injuries", I.rec, `${I.lost} lost work days`, I.rec ? "crit" : "good")}
     ${tile("First aid cases", I.fa, "Treated on site", I.fa ? "warn" : "good")}${tile("High-potential events", I.hipo, "Flagged in the log", I.hipo ? "crit" : "good")}
     ${tile("Log entries not closed", I.open, "Status other than Closed", I.open ? "warn" : "good")}</div></section>
-  <section><div class="grid2">
-    <div class="card"><h3>Events per month</h3><p class="sub">By event type</p><div class="cv"><canvas id="ic1" role="img" aria-label="Events per month"></canvas></div></div>
-    <div class="card"><h3>Event categories</h3><p class="sub">Top 10 · click a bar to filter the log</p><div class="cv tall"><canvas id="ic2" role="img" aria-label="Event categories"></canvas></div></div></div></section>
-  <section><h2>Incident and near-miss log</h2><div class="filters" style="margin-bottom:10px"><input type="search" id="q-INC" placeholder="Search description, type or category" value="${esc(st.q)}" aria-label="Search">
-    ${sel("grp-INC", "Type", st.grp, EVENT_GROUPS)}${sel("cat-INC", "Category", st.cat, uniq(I.rows, "category"))}${sel("st-INC", "Log status", st.st, [["open", "Not closed"], ["closed", "Closed"]])}
-    <button class="btn" type="button" data-reset="INC">Reset</button></div>${table("t-INC", cols, f, st)}</section>`;
+  <section><div class="grid2">${card("ic1", "Events per month", "By event type, last 13 months")}${card("ic2", "Event categories", "Top 10 · click a bar to filter", true)}</div></section>
+  <section><h2>Incident and near-miss log</h2>${table("t-INC", cols, scope, st)}</section>`;
 }
-function afterINC() {
-  draw("ic1", CFG.events); draw("ic2", p => CFG.topCats(p, A.INC.rows, (e, els, ch) => { if (!els.length) return; UI.INC.cat = ch.data.labels[els[0].index]; render(); }, 10));
-  wireSort("t-INC", UI.INC); $("#q-INC").addEventListener("input", e => { UI.INC.q = e.target.value; render("q-INC"); });
-  for (const [id, k] of [["grp-INC", "grp"], ["cat-INC", "cat"], ["st-INC", "st"]]) $("#" + id).addEventListener("change", e => { UI.INC[k] = e.target.value; render(); });
-}
+function afterINC() { const scope = A.view.scope;
+  draw("ic1", p => CFG.events(p, iStats(scope, A.C)));
+  draw("ic2", p => CFG.topBy(p, scope, "category", (e, els, ch) => { if (els.length) setF("INC", "cat", ch.data.labels[els[0].index]); }, 10, "Events"));
+  wireFilters("INC", ["grp", "cat", "st"]); wireSort("t-INC", UI.INC); }
 
-function openRows() { return [...A.NCR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "NCR" }, r)), ...A.SOR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "SOR" }, r))]; }
+/* ---------- Aconex issues ---------- */
+function vACX() {
+  if (!S.data.ACX.length) return `${header()}<section class="card set"><h3>Aconex issues</h3>
+    <p class="sub">No Aconex issues export loaded yet. Export the Issues register from Aconex to Excel and load it with the other trackers.</p>
+    <p style="margin:0;color:var(--muted);font-size:13px">The app looks for a header row with an issue number, a status and a raised / created date. It also reads title, type, priority, assigned organisation and user, location, due date and closed date when present. Column order does not matter.</p>
+    <div><button class="btn primary" type="button" data-act="load">Load Aconex export</button></div></section>`;
+  const st = UI.ACX, all = A.ACX.rows;
+  const scope = all.filter(r => (!st.type || r.category === st.type) && (!st.org || r.assignedOrg === st.org) && (!st.pri || r.priority === st.pri) && match(st.q, r.ref, r.title, r.desc, r.location, r.assignedTo)); A.view = { scope };
+  const D = fStats(scope, A.C);
+  const cols = [{ k: "ref", l: "Issue", h: r => `<span class="mono">${esc(r.ref)}</span>` }, { k: "title", l: "Title", cls: "desc", h: r => esc(r.title || r.desc) }, { k: "category", l: "Type" },
+    { k: "status", l: "Status", h: gPill }, { k: "priority", l: "Priority" }, { k: "assignedOrg", l: "Assigned to", h: r => esc([r.assignedOrg, r.assignedTo].filter(Boolean).join(" · ")) },
+    { k: "issue", l: "Raised", cls: "d", h: dH("issue") }, { k: "due", l: "Due", cls: "d", h: r => r.overdue ? `<span class="age a60">${fmt(r.due)}</span>` : fmt(r.due) },
+    { k: "age", l: "Open for", cls: "n", h: ageH }, { k: "closure", l: "Closed", cls: "d", h: dH("closure") }];
+  return `${header()}${filterBar("ACX", [{ key: "type", label: "Type", opts: uniq(all, "category") }, { key: "org", label: "Assigned to", opts: uniq(all, "assignedOrg") }, { key: "pri", label: "Priority", opts: uniq(all, "priority") }], scope.length, all.length, "issues")}
+  <section><div class="tiles">
+    ${tile("Raised in period", D.issuedPer, delta(D.issuedPer, D.issuedPrev), "info")}${tile("Closed in period", D.closedPer, `Previous ${A.per} days: ${D.closedPrev}`, "good")}
+    ${tile("Open issues", D.open, `of ${D.total} raised to date`, D.open ? "warn" : "good")}${tile("Past due date", D.overdue, "Open with a due date before the period end", D.overdue ? "crit" : "good")}
+    ${tile("Open over 30 days", D.over30, `${D.over60} open over 60 days`, D.over30 ? "crit" : "good")}${tile("Close-out rate", P(D.closeRate), "Closed ÷ raised, excluding cancelled", D.closeRate >= .85 ? "good" : "warn")}
+    ${tile("Average days to close", D.avgClose.toFixed(0), "Raised to closed", "", "", "days")}</div></section>
+  <section><div class="grid2">${card("xc1", "Issues raised and closed", "Per month, last 13 months")}${card("xc2", "How long open issues have been open", "Days from raised date to the period end")}
+    ${card("xc3", "Issues by type", "Open vs closed · click a bar to filter")}${card("xc4", "Open issues by assigned organisation", "Click a bar to filter")}</div></section>
+  <section id="list-ACX">${listHead("ACX", "Aconex issues", [["open", "All open"], ["overdue", "Past due date"], ["over30", "Open over 30 days"], ["closed", "Closed"]])}${table("t-ACX", cols, scope.filter(statusPass(st.st)), st)}</section>`;
+}
+function afterACX() { if (!S.data.ACX.length) return; const scope = A.view.scope, D = fStats(scope, A.C);
+  draw("xc1", p => CFG.monthly(p, D, ["Raised", "Closed"])); draw("xc2", p => CFG.age(p, [["Aconex", D]]));
+  draw("xc3", p => CFG.split(p, scope, "category", (e, els, ch) => { if (els.length) setF("ACX", "type", ch.data.labels[els[0].index]); }));
+  draw("xc4", p => CFG.topBy(p, scope.filter(r => r.isOpen), "assignedOrg", (e, els, ch) => { if (els.length) setF("ACX", "org", ch.data.labels[els[0].index]); }, 8, "Open issues"));
+  wireFilters("ACX", ["type", "org", "pri"]); wireList("ACX", "t-ACX"); }
+
+/* ---------- open items ---------- */
+function openRows() { return [...A.NCR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "NCR" }, r)), ...A.SOR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "SOR" }, r)),
+  ...A.ACX.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "Aconex" }, r, { desc: r.title || r.desc }))]; }
 function vOpen() {
-  const st = UI.OPEN, all = openRows();
+  const st = UI.OPEN, all = openRows(), types = ["NCR", "SOR", ...(S.data.ACX.length ? ["Aconex"] : [])];
   const f = all.filter(r => (!st.ds || r.ds === st.ds) && (!st.bucket || r.bucket === st.bucket));
   const cols = [{ k: "ds", l: "Type", h: r => `<span class="tag">${r.ds}</span>` }, { k: "ref", l: "Reference", h: r => `<span class="mono">${esc(r.ref)}</span>` }, { k: "category", l: "Cat." },
     { k: "desc", l: "Description", cls: "desc" }, { k: "issue", l: "Issued", cls: "d", h: dH("issue") }, { k: "age", l: "Open for", cls: "n", h: ageH },
-    { k: "status", l: "Status", h: r => pill(r.status) }, { k: "severity", l: "Severity" }, { k: "raisedBy", l: "Raised by" }];
-  return `${header()}<section><h2>Open NCRs and SORs<small>oldest first</small></h2>
-  <div class="filters" style="margin-bottom:10px">${sel("ds-OPEN", "Type", st.ds, ["NCR", "SOR"])}${sel("b-OPEN", "Age", st.bucket || "", BUCKETS)}
-  ${BUCKETS.map((b, i) => `<span class="chip">${b}<i>${A.NCR.buckets[i]} NCR · ${A.SOR.buckets[i]} SOR</i></span>`).join("")}</div>${table("t-OPEN", cols, f, st)}</section>`;
+    { k: "status", l: "Status", h: r => r.ds === "Aconex" ? gPill(r) : pill(r.status) }, { k: "severity", l: "Severity" }, { k: "raisedBy", l: "Raised by" }];
+  return `${header()}<section><h2>Open items<small>oldest first</small></h2>
+  <div class="filters" style="margin-bottom:10px">${sel("ds-OPEN", "Type", st.ds, types)}${sel("b-OPEN", "Age", st.bucket || "", BUCKETS)}
+  ${BUCKETS.map((b, i) => `<span class="chip">${b}<i>${types.map(t => `${(t === "Aconex" ? A.ACX : A[t]).buckets[i]} ${t}`).join(" · ")}</i></span>`).join("")}</div>${table("t-OPEN", cols, f, st)}</section>`;
 }
 function afterOpen() { wireSort("t-OPEN", UI.OPEN); $("#ds-OPEN").addEventListener("change", e => { UI.OPEN.ds = e.target.value; render(); }); $("#b-OPEN").addEventListener("change", e => { UI.OPEN.bucket = e.target.value; render(); }); }
 
@@ -628,7 +733,7 @@ function vChecks() {
 }
 
 const HKEY = "hse-dash-history";
-function snapshot() { if (S.demo || !S.rpt) return; const h = load(HKEY) || {}; h[iso(S.rpt)] = { ncrTotal: A.NCR.total, ncrOpen: A.NCR.open, ncrOver30: A.NCR.over30, sorTotal: A.SOR.total, sorOpen: A.SOR.open, sorOver30: A.SOR.over30, nm: A.INC.nm, swn: A.SWN.total, saved: new Date().toISOString() }; store(HKEY, h); }
+function snapshot() { if (S.demo || !A) return; const h = load(HKEY) || {}; h[iso(A.rpt)] = { acxOpen: S.data.ACX.length ? A.ACX.open : null, ncrTotal: A.NCR.total, ncrOpen: A.NCR.open, ncrOver30: A.NCR.over30, sorTotal: A.SOR.total, sorOpen: A.SOR.open, sorOver30: A.SOR.over30, nm: A.INC.nm, swn: A.SWN.total, saved: new Date().toISOString() }; store(HKEY, h); }
 function vHistory() {
   const h = load(HKEY) || {}, keys = Object.keys(h).sort();
   if (!keys.length) return `${header()}<div class="empty">Each time you load real trackers, the headline figures are saved here by report date, so you can compare weeks.${S.demo ? " Demo data is not saved." : ""}</div>`;
@@ -666,13 +771,14 @@ function render(keepFocus) {
   A = analyze(); destroyAll(); renderTabs();
   const v = route(), view = $("#view");
   const map = { overview: [vOverview, afterOverview], ncr: [() => vRegister("NCR"), () => afterRegister("NCR")], sor: [() => vRegister("SOR"), () => afterRegister("SOR")],
-    "stop-work": [vSWN, afterSWN], incidents: [vINC, afterINC], "open-items": [vOpen, afterOpen], checks: [vChecks, () => {}], history: [vHistory, afterHistory], settings: [vSettings, afterSettings] };
+    "stop-work": [vSWN, afterSWN], incidents: [vINC, afterINC], aconex: [vACX, afterACX], "open-items": [vOpen, afterOpen], checks: [vChecks, () => {}], history: [vHistory, afterHistory], settings: [vSettings, afterSettings] };
   const [html, after] = map[v]; view.innerHTML = html(); after();
   view.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { const g = b.dataset.go; if (g === "ncr" || g === "sor") UI[g.toUpperCase()].st = "open"; location.hash = g; }));
   view.querySelectorAll("[data-act=load]").forEach(b => b.addEventListener("click", () => $("#file").click()));
-  view.querySelectorAll("[data-reset]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.reset; Object.assign(UI[k], { q: "", st: k === "INC" ? "" : "open", cat: "", who: "", sev: "", grp: "" }); render(); }));
   if (keepFocus) { const el = document.getElementById(keepFocus); if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (e) {} } }
-  $("#rpt").value = iso(A.rpt); $("#per").value = String(S.period);
+  $("#from").value = iso(A.perStart); $("#to").value = iso(A.rpt); $("#from").max = iso(A.rpt); $("#to").min = iso(A.perStart);
+  const ps = $("#preset"), som = new Date(A.rpt.getFullYear(), A.rpt.getMonth(), 1);
+  ps.value = +A.perStart === +som && A.per > 1 ? "month" : ["3", "7", "14", "30"].includes(String(A.per)) ? String(A.per) : "";
 }
 
 /* =====================================================================
@@ -682,24 +788,26 @@ async function loadFiles(files) {
   const results = [], notes = [];
   for (const file of files) {
     try { const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }); const found = parseWorkbook(wb, file.name);
-      if (!Object.keys(found).length) notes.push(`${file.name}: no NCR, SOR, stop-work or incident register found`);
+      if (!Object.keys(found).length) notes.push(`${file.name}: no NCR, SOR, stop-work, incident or Aconex issues register found`);
       results.push(found);
     } catch (e) { notes.push(`${file.name}: could not be read (${e.message})`); }
   }
   const merged = {}; for (const f of results) for (const k in f) if (!merged[k] || f[k].rows.length >= merged[k].rows.length) merged[k] = f[k];
   if (!Object.keys(merged).length) { toast(notes.join("\n") || "No data found in those files."); return; }
-  if (S.demo) { S.data = { NCR: [], SOR: [], SWN: [], INC: [] }; S.meta = {}; S.demo = false; S.rpt = null; }
+  const span = S.from && S.to && !S.demo ? days(S.to, S.from) : 6;
+  if (S.demo) { S.data = emptyData(); S.meta = {}; S.demo = false; S.from = S.to = null; }
   let hd = null;
   for (const k in merged) { const m = merged[k];
-    S.data[k] = k === "INC" ? cleanINC(m.rows) : k === "SWN" ? cleanSWN(m.rows) : cleanFindings(m.rows, k);
-    S.meta[k] = { file: m.file, sheet: m.sheet, headerDate: m.headerDate || null, missing: m.missing.filter(f => f !== "remarks"), loaded: new Date().toISOString() };
-    if (!hd && m.headerDate && k !== "INC") hd = m.headerDate;
+    S.data[k] = k === "INC" ? cleanINC(m.rows) : k === "SWN" ? cleanSWN(m.rows) : k === "ACX" ? cleanACX(m.rows) : cleanFindings(m.rows, k);
+    S.meta[k] = { file: m.file, sheet: m.sheet, headerDate: m.headerDate || null, missing: m.missing.filter(f => f !== "remarks" && !(DATASETS[k].optional || []).includes(f)), loaded: new Date().toISOString() };
+    if (!hd && m.headerDate && k !== "INC" && k !== "ACX") hd = m.headerDate;
     notes.unshift(`${DATASETS[k].label}: ${S.data[k].length} rows from "${m.sheet}"${S.meta[k].missing.length ? ` (missing: ${S.meta[k].missing.join(", ")})` : ""}`);
   }
-  if (hd) S.rpt = hd;
-  if (!S.rpt) { const all = [...S.data.NCR, ...S.data.SOR].map(r => r.issue).concat(S.data.INC.map(r => r.date)).filter(Boolean); S.rpt = all.length ? new Date(Math.max(...all)) : new Date(); }
+  if (hd) S.to = hd;
+  if (!S.to) { const all = [...S.data.NCR, ...S.data.SOR, ...S.data.ACX].map(r => r.issue).concat(S.data.INC.map(r => r.date)).filter(Boolean); S.to = all.length ? new Date(Math.max(...all)) : new Date(); }
+  if (hd || !S.from) S.from = addD(S.to, -span);
   render(); snapshot(); persist();
-  toast(notes.join("\n") + (hd ? `\nReport date set to ${fmtL(hd)} from the tracker header.` : ""), 7000);
+  toast(notes.join("\n") + (hd ? `\nPeriod set to ${fmt(S.from, {})} – ${fmtL(hd)} (to date from the tracker header).` : ""), 7000);
 }
 
 /* =====================================================================
@@ -746,23 +854,30 @@ async function exportExcel() {
       Object.assign(ws.getCell(`${a}${row + 2}`), { value: s, font: { name: F, size: 8, color: { argb: MUTED } }, alignment: { indent: 1, vertical: "top", wrapText: true } });
       for (let r = row; r <= row + 2; r++) { ws.getCell(`${a}${r}`).border = side; ws.getCell(`${a}${r}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7F9F8" } }; } });
       ws.getRow(row).height = 18; ws.getRow(row + 1).height = 32; ws.getRow(row + 2).height = 26; };
-    const RED = "FFD03B3B", AMB = "FFC98500", GRN = "FF0B8A3E", BLU = "FF2A78D6";
-    section(6, `This period (${fmt(A.perStart, { day: "2-digit", month: "short" })} – ${fmt(A.rpt, { day: "2-digit", month: "short" })}) vs previous ${A.per} days`);
-    tiles(7, [["NCRs issued", N.issuedPer, `Previous period: ${N.issuedPrev}`, BLU], ["SORs issued", R.issuedPer, `Previous period: ${R.issuedPrev}`, BLU],
-      ["Near misses reported", I.nmPer, `Previous period: ${I.nmPrev}`, BLU], ["Stop work notices", W.per, `Previous period: ${W.prev}`, AMB]]);
-    section(11, "Position at report date");
-    tiles(12, [["Open NCRs", N.open, `${N.over30} open > 30 days · ${N.major} Major`, N.over30 ? RED : GRN], ["Open SORs", R.open, `${R.over30} open > 30 days`, R.over30 ? RED : GRN],
+    const RED = "FFD03B3B", AMB = "FFC98500", GRN = "FF0B8A3E", BLU = "FF2A78D6", X = A.ACX, hasX = S.data.ACX.length > 0;
+    let r0 = 6;
+    section(r0, `This period (${fmt(A.perStart, {})} – ${fmtL(A.rpt)}) vs previous ${A.per} days`);
+    tiles(r0 + 1, [["NCRs issued", N.issuedPer, `Previous period: ${N.issuedPrev}`, BLU], ["SORs issued", R.issuedPer, `Previous period: ${R.issuedPrev}`, BLU],
+      ["Near misses reported", I.nmPer, `Previous period: ${I.nmPrev}`, BLU], ["Stop work notices", W.issuedPer, `Previous period: ${W.issuedPrev}`, AMB]]);
+    r0 += 5; section(r0, `Position at ${fmtL(A.rpt)}`);
+    tiles(r0 + 1, [["Open NCRs", N.open, `${N.over30} open > 30 days · ${N.major} Major`, N.over30 ? RED : GRN], ["Open SORs", R.open, `${R.over30} open > 30 days`, R.over30 ? RED : GRN],
       ["NCR close-out rate", P(N.closeRate), `SOR ${P(R.closeRate)} · closed ÷ issued excl. terminated`, N.closeRate >= .85 ? GRN : AMB], ["1st response on time", P(N.onTime), `NCR within 7 days · SOR ${P(R.onTime)}`, N.onTime >= .8 ? GRN : RED]]);
-    tiles(15, [["Avg days to close NCR", Math.round(N.avgClose), `SOR ${Math.round(R.avgClose)} days`, NAVY], ["Near misses to date", I.nm, `${I.hipo} high-potential events`, BLU],
+    tiles(r0 + 4, [["Avg days to close NCR", Math.round(N.avgClose), `SOR ${Math.round(R.avgClose)} days`, NAVY], ["Near misses to date", I.nm, `${I.hipo} high-potential events`, BLU],
       ["Recordable injuries", I.rec, `${I.fa} first aid cases · ${I.lost} lost days`, I.rec ? RED : GRN], ["Days since last recordable", I.sinceRec == null ? "—" : I.sinceRec, I.lastRec ? `Last: ${fmtL(I.lastRec)}` : "None logged", GRN]]);
-    section(19, "Trends and breakdowns");
-    const imgs = [[p => CFG.issuedClosed(p, "NCR"), "NCRs issued and closed per month"], [p => CFG.issuedClosed(p, "SOR"), "SORs issued and closed per month"],
-      [CFG.backlog, "Open backlog at month end"], [p => CFG.age(p), "Open items by age"], [CFG.events, "Incident log events per month"], [p => CFG.topCats(p, I.rows), "Most frequent event categories"],
-      [p => CFG.category(p, "NCR"), "NCRs by category"], [CFG.swnThemes, "Stop work notices by theme"]];
-    imgs.forEach(([make, h], i) => { const id = wb.addImage({ base64: png(make, h), extension: "png" }); const r = 20 + Math.floor(i / 2) * 15;
-      ws.addImage(id, { tl: { col: i % 2 ? 7 : 1, row: r }, ext: { width: 520, height: 243 } }); });
-    const noteRow = 20 + 4 * 15 + 1; ws.mergeCells(`B${noteRow}:M${noteRow + 1}`);
-    Object.assign(ws.getCell(`B${noteRow}`), { value: "Definitions: Open = any status other than Closed or Terminated. Age = report date minus issue date. 1st response on time = contractor responded within 7 days (tracker column). Recordable = MTC, RWC, LWC, fatality, occupational illness.", font: { name: F, size: 8, italic: true, color: { argb: MUTED } }, alignment: { wrapText: true, vertical: "top" } });
+    r0 += 7;
+    if (hasX) { tiles(r0, [["Aconex issues raised", X.issuedPer, `In period · previous ${X.issuedPrev}`, BLU], ["Open Aconex issues", X.open, `of ${X.total} raised to date`, X.open ? AMB : GRN],
+      ["Past due date", X.overdue, "Open with due date passed", X.overdue ? RED : GRN], ["Aconex close-out rate", P(X.closeRate), `Avg ${Math.round(X.avgClose)} days to close`, X.closeRate >= .85 ? GRN : AMB]]); r0 += 4; }
+    r0 += 1; section(r0, "Trends and breakdowns");
+    const imgs = [[p => CFG.monthly(p, N), "NCRs issued and closed per month"], [p => CFG.monthly(p, R), "SORs issued and closed per month"],
+      [p => CFG.backlog(p, [["NCR open", N], ["SOR open", R]]), "Open backlog at month end"], [p => CFG.age(p, [["NCR", N], ["SOR", R]]), "Open items by age"],
+      [p => CFG.events(p, I), "Incident log events per month"], [p => CFG.topBy(p, I.rows, "category", null, 8, "Events"), "Most frequent event categories"],
+      [p => CFG.split(p, N.rows, "category"), "NCRs by category"], [p => CFG.swnThemes(p, W.rows), "Stop work notices by theme"],
+      ...(hasX ? [[p => CFG.monthly(p, X, ["Raised", "Closed"]), "Aconex issues raised and closed per month"], [p => CFG.topBy(p, X.rows.filter(r => r.isOpen), "assignedOrg", null, 8, "Open issues"), "Open Aconex issues by assigned organisation"]] : [])];
+    const top = r0 + 1;
+    imgs.forEach(([make, h], i) => { const id = wb.addImage({ base64: png(make, h), extension: "png" }); const r = top + Math.floor(i / 2) * 15;
+      ws.addImage(id, { tl: { col: i % 2 ? 7 : 1, row: r - 1 }, ext: { width: 520, height: 243 } }); });
+    const noteRow = top + Math.ceil(imgs.length / 2) * 15 + 1; ws.mergeCells(`B${noteRow}:M${noteRow + 1}`);
+    Object.assign(ws.getCell(`B${noteRow}`), { value: "Definitions: Open = any status other than Closed or Terminated (Aconex: other than Closed or Cancelled). Age = period end date minus issue date. 1st response on time = contractor responded within 7 days (tracker column). Recordable = MTC, RWC, LWC, fatality, occupational illness.", font: { name: F, size: 8, italic: true, color: { argb: MUTED } }, alignment: { wrapText: true, vertical: "top" } });
     ws.pageSetup.printArea = `A1:N${noteRow + 1}`;
 
     const sheet = (name, cols, rows) => { const s = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }], pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
@@ -772,13 +887,16 @@ async function exportExcel() {
       s.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } }; return s; };
     const st = s => STATUS[s] ? STATUS[s][0] : s;
     const open = openRows().sort((a, b) => (b.age ?? -1) - (a.age ?? -1));
-    sheet("Open Items", [["Type", r => r.ds, 7], ["Reference", r => r.ref, 44], ["Category", r => r.category, 9], ["Description", r => r.desc, 60, 1], ["Issued", r => r.issue, 11], ["Days open", r => r.age, 9], ["Status", r => st(r.status), 15], ["Severity", r => r.severity, 11], ["Raised by", r => r.raisedBy, 12]], open);
+    sheet("Open Items", [["Type", r => r.ds, 8], ["Reference", r => r.ref, 44], ["Category", r => r.category, 9], ["Description", r => r.desc, 60, 1], ["Issued", r => r.issue, 11], ["Days open", r => r.age, 9], ["Status", r => st(r.status), 15], ["Severity", r => r.severity, 11], ["Raised by", r => r.raisedBy, 12]], open);
     const reg = (k) => sheet(`${k} Register`, [["Reference", r => r.ref, 44], ["Category", r => r.category, 9], ...(k === "NCR" ? [["Severity", r => r.severity, 11]] : []), ["Description", r => r.desc, 60, 1], ["Issued", r => r.issue, 11],
       ["Response due", r => r.respReq, 12], ["Status", r => st(r.status), 15], ["Days open", r => r.age, 9], ["Final closure", r => r.closure, 12], ["Days to close", r => r.toClose, 10], ["1st response on time", r => r.onTime ? "Yes" : "No", 10], ["Raised by", r => r.raisedBy, 12]],
       [...A[k].rows].sort((a, b) => (b.issue || 0) - (a.issue || 0)));
     reg("NCR"); reg("SOR");
     sheet("Stop Work", [["Reference", r => r.ref, 40], ["Description", r => r.desc, 60, 1], ["Theme", r => r.theme, 18], ["Issued", r => r.issue, 11], ["Returned to contractor", r => r.closure, 14], ["Status", r => title(r.status), 10], ["Contractor reply", r => r.contractorRef, 24]], W.rows);
     sheet("Incident Log", [["Date", r => r.date || r.dateText, 11], ["Type", r => r.type, 18], ["Group", r => r.group, 14], ["Category", r => r.category, 26], ["Description", r => r.desc, 70, 1], ["High potential", r => r.hipo ? "Yes" : "No", 9], ["Lost days", r => r.lostDays, 8], ["Log status", r => r.statusRaw, 10]], [...I.rows].sort((a, b) => (b.date || 0) - (a.date || 0)));
+    if (hasX) sheet("Aconex Issues", [["Issue", r => r.ref, 18], ["Title", r => r.title || r.desc, 50, 1], ["Type", r => r.type, 16], ["Status", r => r.status, 12], ["Priority", r => r.priority, 10],
+      ["Assigned organisation", r => r.assignedOrg, 22], ["Assigned to", r => r.assignedTo, 18], ["Location", r => r.location, 16], ["Raised", r => r.issue, 11], ["Due", r => r.due, 11],
+      ["Past due", r => r.overdue ? "Yes" : "", 8], ["Days open", r => r.age, 9], ["Closed", r => r.closure, 11], ["Raised by", r => r.raisedBy, 14]], [...X.rows].sort((a, b) => (b.issue || 0) - (a.issue || 0)));
     const buf = await wb.xlsx.writeBuffer();
     await saveFile(`${(PROJECT.name || "Site").replace(/[^A-Za-z0-9-]+/g, "_")}_HSE_Dashboard_${iso(A.rpt)}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   } catch (e) { console.error(e); toast("Could not build the Excel file: " + e.message); }
@@ -805,8 +923,13 @@ function demo() {
       categoryRaw: "", desc: "Fictional example event for demonstration.", severity: "1 Low", hipo: rnd() < .04, injury: "", body: "", lostDays: t === "Medical Treatment Case" ? 2 : 0, contractor: "Demo contractor", statusRaw: rnd() < .9 ? "Closed" : "Open", isOpen: false, lessons: "" }; });
   inc.forEach(r => r.isOpen = r.statusRaw !== "Closed");
   const swn = ["Lifting operation without approved lift plan", "Work at height without edge protection", "Working without approved RAMS", "Unsafe access to excavation", "Dust control failure at haul road", "Laydown area storage non-compliance"].map((d, i) => { const issue = addD(start, 40 + i * 45); return { ref: `DEMO-SWN-${String(i + 1).padStart(3, "0")}`, desc: d, issue, closure: addD(issue, 10 + i * 4), respReq: addD(issue, 7), raisedBy: "Inspector A", status: "CLOSED", contractorRef: `DEMO-REPLY-${i + 1}`, theme: swnTheme(d) }; });
-  Object.assign(S, { data: { NCR: mkF(120, "NCR", ["HSW", "HSW", "HSW", "STR", "LOG", "CIV"], ncrTxt).map(clamp), SOR: mkF(135, "SOR", ["STR", "STR", "HSE", "HSE", "LOG", "ENV"], sorTxt).map(clamp), SWN: swn, INC: inc },
-    meta: { NCR: { file: "demo", headerDate: rpt, missing: [] }, SOR: { file: "demo", headerDate: rpt, missing: [] }, SWN: { file: "demo", headerDate: rpt, missing: [] }, INC: { file: "demo", missing: [] } }, rpt, period: 7, demo: true });
+  const orgs = ["Main contractor", "MEP subcontractor", "Facade subcontractor", "Design consultant"], types = ["Safety observation", "Quality defect", "Environmental", "Design query", "Snag"];
+  const acx = Array.from({ length: 70 }, (_, i) => { const issue = addD(start, Math.floor(Math.pow(rnd(), .6) * span)); const age = days(rpt, issue); const closed = rnd() < (age > 30 ? .8 : .35);
+    return { ref: `DEMO-ISS-${String(i + 1).padStart(4, "0")}`, title: pick(["Missing guardrail at stair core", "Exposed rebar ends without caps", "Water ponding near electrical panel", "Fire door wedged open", "Damaged waterproofing at podium", "Drawing clash at level 3 duct"]),
+      desc: "", type: pick(types), status: closed ? "Closed" : pick(["Open", "Open", "Responded"]), priority: pick(["High", "Medium", "Medium", "Low"]), raisedBy: pick(who), assignedOrg: pick(orgs), assignedTo: "",
+      location: pick(["Basement B2", "Level 1", "Podium", "Roof"]), issue, due: addD(issue, 14), closure: closed ? addD(issue, 3 + Math.floor(rnd() * Math.max(4, Math.min(45, age - 2)))) : null, remarks: "" }; });
+  Object.assign(S, { data: { ACX: acx.map(clamp), NCR: mkF(120, "NCR", ["HSW", "HSW", "HSW", "STR", "LOG", "CIV"], ncrTxt).map(clamp), SOR: mkF(135, "SOR", ["STR", "STR", "HSE", "HSE", "LOG", "ENV"], sorTxt).map(clamp), SWN: swn, INC: inc },
+    meta: { NCR: { file: "demo", headerDate: rpt, missing: [] }, SOR: { file: "demo", headerDate: rpt, missing: [] }, SWN: { file: "demo", headerDate: rpt, missing: [] }, INC: { file: "demo", missing: [] }, ACX: { file: "demo", missing: [] } }, from: addD(rpt, -6), to: rpt, demo: true });
 }
 
 /* =====================================================================
@@ -815,8 +938,13 @@ function demo() {
 $("#loadBtn").addEventListener("click", () => $("#file").click());
 $("#file").addEventListener("change", e => { if (e.target.files.length) loadFiles([...e.target.files]); e.target.value = ""; });
 $("#xlsBtn").addEventListener("click", exportExcel);
-$("#rpt").addEventListener("change", e => { const d = fromIso(e.target.value); if (d) { S.rpt = d; persist(); render(); } });
-$("#per").addEventListener("change", e => { S.period = +e.target.value; persist(); render(); });
+$("#from").addEventListener("change", e => { const d = fromIso(e.target.value); if (d) { S.from = d; if (S.to && d > S.to) S.to = d; persist(); render(); } });
+$("#to").addEventListener("change", e => { const d = fromIso(e.target.value); if (d) { S.to = d; if (S.from && S.from > d) S.from = d; persist(); render(); } });
+$("#preset").addEventListener("change", e => { const v = e.target.value, to = A.rpt; if (!v) return;
+  if (v === "month") S.from = new Date(to.getFullYear(), to.getMonth(), 1);
+  else if (v === "prevmonth") { S.to = new Date(to.getFullYear(), to.getMonth(), 0); S.from = new Date(S.to.getFullYear(), S.to.getMonth(), 1); }
+  else S.from = addD(to, -(+v - 1));
+  if (v !== "prevmonth") S.to = to; persist(); render(); });
 if (!window.claude) { const pb = $("#printBtn"); pb.hidden = false; pb.addEventListener("click", () => window.print()); }
 let clearArm = 0; $("#clearBtn").addEventListener("click", e => { const b = e.currentTarget;
   if (Date.now() - clearArm < 4000) { store("hse-dash-v1"); store(HKEY); demo(); render(); b.textContent = "Clear stored data"; clearArm = 0; toast("Stored data and history cleared. Showing demo data."); return; }
