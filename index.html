@@ -141,6 +141,16 @@ tbody tr:hover td{background:var(--surface-2)}
 .flab{font:700 12px var(--display);font-stretch:85%;text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
 .fsum{font-size:12px;color:var(--muted)}
 .fsum b{color:var(--ink)}
+.mapper{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:color-mix(in srgb,var(--ink) 35%,transparent);padding:16px}
+.mbox{background:var(--surface);border:1px solid var(--line);border-radius:10px;max-width:900px;width:100%;max-height:calc(100% - 32px);overflow:auto;padding:20px 22px;display:grid;gap:14px;box-shadow:0 20px 50px rgb(0 0 0 / .25)}
+.mbox h3{margin:0;font:700 18px var(--display);font-stretch:85%}
+.mbox .sub{margin:0;color:var(--muted)}
+.mrow{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.mrow select,.mrow input,.mgrid select{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:6px 8px;font-size:13px;color:var(--ink);max-width:100%}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:12px 16px}
+.req{font-style:normal;font-weight:500;font-size:11px;color:var(--crit);margin-left:4px}
+.merr{margin:0;color:var(--crit);font-weight:600}
+.mact{display:flex;justify-content:flex-end;gap:8px}
 .foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 .drop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(2px)}
 .drop div{border:2px dashed var(--accent);border-radius:12px;padding:40px 48px;background:var(--surface);text-align:center;font:700 20px var(--display);font-stretch:85%;max-width:calc(100% - 32px)}
@@ -181,7 +191,7 @@ tbody tr:hover td{background:var(--surface-2)}
    CONFIGURATION - edit these lists as the project evolves
    ===================================================================== */
 // Project details are entered in the Settings tab and kept in this browser only.
-const SETTINGS_KEY = "hse-dash-settings";
+const SETTINGS_KEY = "hse-dash-settings", COLMAP_KEY = "hse-dash-colmap";
 const DEFAULT_SETTINGS = { name: "", contract: "", contractor: "", consultant: "", earliestIssue: "2025-01-01", people: "", categories: "" };
 const PROJECT = Object.assign({}, DEFAULT_SETTINGS, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch (e) { return {}; } })());
 
@@ -206,16 +216,19 @@ const DATASETS = {
     suspended: ["worksuspended/stopped"], tbt: ["contractortoolboxtalkconducted"], lessons: ["contractorlessonslearned"],
     status: ["incidentstatusclosed/open", "incidentstatus"] } },
   // Aconex issues export: detected by an issue-number, status and raised/created-date column in the same header row
-  ACX: { label: "Aconex", detect: { ref: 1, status: 1, issue: 1 }, required: "ref", optional: ["desc", "remarks", "assignedTo", "location", "raisedBy", "priority", "title"], fields: {
+  ACX: { label: "Aconex", detect: { ref: 1, status: 1, issue: 1 }, required: "ref", optional: ["title", "desc", "type", "priority", "raisedBy", "assignedOrg", "assignedTo", "location", "due", "closure", "remarks"], fields: {
     ref: ["issueid", "issueno", "issueno.", "issuenumber", "issue#", "issueref", "issuereference", "id$", "no$", "no.$", "number$", "reference$"],
     title: ["title", "issuetitle", "subject", "summary"], desc: ["description$", "details$", "issuedescription"], type: ["issuetype", "type$", "category$", "issuecategory"],
-    status: ["status", "issuestatus"], priority: ["priority", "severity$"], raisedBy: ["raisedby", "createdby", "reportedby", "author$", "originator"],
+    status: ["status", "issuestatus", "state$"], priority: ["priority", "severity$"], raisedBy: ["raisedby", "createdby", "reportedby", "author$", "originator"],
     assignedOrg: ["assignedtoorganization", "assignedtoorganisation", "assignedorganization", "assignedorganisation", "responsibleorganization", "responsibleorganisation", "responsiblecompany", "assignedtocompany", "organization$", "organisation$"],
     assignedTo: ["assignedto", "assignee", "responsibleperson", "responsible$", "assignedtouser"], location: ["location", "area$", "zone$"],
-    issue: ["dateraised", "raiseddate", "raisedon", "datecreated", "createddate", "createdon", "dateopened", "openeddate", "created$", "opened$", "date$"],
+    issue: ["dateraised", "raiseddate", "raisedon", "raisedat", "datecreated", "createddate", "createdon", "createdat", "dateopened", "openeddate", "dateissued", "issueddate", "created$", "opened$", "raised$", "issued$", "date$"],
     due: ["duedate", "datedue", "due$", "targetdate", "responsedue"], closure: ["dateclosed", "closeddate", "closedon", "datecompleted", "completeddate", "closed$"],
     remarks: ["comments", "remarks", "notes"] } },
 };
+// Column matches saved from the "Match columns" panel (kept in this browser only)
+function applyColmap() { let m = {}; try { m = JSON.parse(localStorage.getItem(COLMAP_KEY) || "{}"); } catch (e) {}
+  for (const k in m) if (DATASETS[k]) for (const f in m[k]) if (DATASETS[k].fields[f] && !DATASETS[k].fields[f].includes(m[k][f] + "$")) DATASETS[k].fields[f].unshift(m[k][f] + "$"); }
 // Extra name / category corrections come from the Settings tab ("typed = reported", one per line).
 const parseMap = t => Object.fromEntries(String(t || "").split(/\n/).map(l => l.split("=")).filter(p => p.length === 2 && p[0].trim() && p[1].trim()).map(([a, b]) => [a.trim().toLowerCase(), b.trim()]));
 let PEOPLE_MAP = parseMap(PROJECT.people);
@@ -754,9 +767,10 @@ function vSettings() {
   ${f("contractor", "Main contractor", "Shown under the title", "e.g. ABC Contracting")}${f("consultant", "Supervision consultant", "Named as the source of the NCR / SOR register", "e.g. XYZ Consultants")}
   <label class="fld" for="set-earliestIssue"><span>Earliest plausible issue date</span><input type="date" id="set-earliestIssue" value="${esc(PROJECT.earliestIssue)}"><small>Earlier issue dates are flagged as likely typos</small></label></div>
   <div class="setgrid">${t("people", "Inspector name corrections", "One per line: name as typed = name to report", "Mohd = Mohammed")}${t("categories", "Incident category corrections", "One per line: category as typed = standard category", "Fall from hieght (Person) = Fall from Height (Person)")}</div>
-  <div><button class="btn primary" type="button" id="saveSet">Save settings</button></div></section>`;
+  <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn primary" type="button" id="saveSet">Save settings</button><button class="btn" type="button" id="resetMap">Forget saved column matches</button></div></section>`;
 }
 function afterSettings() {
+  $("#resetMap").addEventListener("click", () => { store(COLMAP_KEY); location.reload(); });
   $("#saveSet").addEventListener("click", () => {
     for (const k of Object.keys(DEFAULT_SETTINGS)) { const el = document.getElementById("set-" + k); if (el) PROJECT[k] = el.value.trim(); }
     if (!PROJECT.earliestIssue) PROJECT.earliestIssue = DEFAULT_SETTINGS.earliestIssue;
@@ -785,17 +799,17 @@ function render(keepFocus) {
    Loading files
    ===================================================================== */
 async function loadFiles(files) {
-  const results = [], notes = [];
+  const results = [], notes = [], pending = [];
   for (const file of files) {
     try { const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }); const found = parseWorkbook(wb, file.name);
-      if (!Object.keys(found).length) notes.push(`${file.name}: no NCR, SOR, stop-work, incident or Aconex issues register found`);
+      if (!Object.keys(found).length) pending.push({ wb, name: file.name });
       results.push(found);
     } catch (e) { notes.push(`${file.name}: could not be read (${e.message})`); }
   }
   const merged = {}; for (const f of results) for (const k in f) if (!merged[k] || f[k].rows.length >= merged[k].rows.length) merged[k] = f[k];
-  if (!Object.keys(merged).length) { toast(notes.join("\n") || "No data found in those files."); return; }
+  if (!Object.keys(merged).length) { if (pending.length) openMapper(pending[0]); else toast(notes.join("\n") || "No data found in those files."); return; }
   const span = S.from && S.to && !S.demo ? days(S.to, S.from) : 6;
-  if (S.demo) { S.data = emptyData(); S.meta = {}; S.demo = false; S.from = S.to = null; }
+  if (S.demo) leaveDemo();
   let hd = null;
   for (const k in merged) { const m = merged[k];
     S.data[k] = k === "INC" ? cleanINC(m.rows) : k === "SWN" ? cleanSWN(m.rows) : k === "ACX" ? cleanACX(m.rows) : cleanFindings(m.rows, k);
@@ -807,7 +821,71 @@ async function loadFiles(files) {
   if (!S.to) { const all = [...S.data.NCR, ...S.data.SOR, ...S.data.ACX].map(r => r.issue).concat(S.data.INC.map(r => r.date)).filter(Boolean); S.to = all.length ? new Date(Math.max(...all)) : new Date(); }
   if (hd || !S.from) S.from = addD(S.to, -span);
   render(); snapshot(); persist();
+  if (pending.length) { openMapper(pending[0]); return; }
   toast(notes.join("\n") + (hd ? `\nPeriod set to ${fmt(S.from, {})} – ${fmtL(hd)} (to date from the tracker header).` : ""), 7000);
+}
+
+function leaveDemo() { S.data = emptyData(); S.meta = {}; S.demo = false; S.from = S.to = null; }
+
+/* =====================================================================
+   Match columns (for files that are not recognised automatically)
+   ===================================================================== */
+const MAP_FIELDS = { ACX: [["ref", "Issue number", 1, ["issue", "id", "no", "number", "ref"]], ["status", "Status", 1, ["status", "state"]], ["issue", "Raised / created date", 1, ["raised", "created", "opened", "issued", "date"]],
+  ["title", "Title", 0, ["title", "subject", "summary", "name"]], ["type", "Type", 0, ["type", "category", "kind", "discipline"]], ["priority", "Priority", 0, ["priority", "severity"]],
+  ["assignedOrg", "Assigned organisation", 0, ["assignedtoorg", "assignedorg", "responsibleorg", "organi", "org", "company", "contractor"]], ["assignedTo", "Assigned person", 0, ["assignedto", "assignee", "responsible"]],
+  ["raisedBy", "Raised by", 0, ["raisedby", "createdby", "author", "originator"]], ["location", "Location", 0, ["location", "area", "zone"]],
+  ["due", "Due date", 0, ["due", "target", "respond"]], ["closure", "Closed date", 0, ["closed", "completed"]], ["desc", "Description", 0, ["description", "details"]]] };
+let MAP = null;
+function guessHeaderRow(rows) { let best = 0, bi = 0; for (let r = 0; r < Math.min(40, rows.length); r++) { const n = (rows[r] || []).filter(c => typeof c === "string" && c.trim()).length; if (n > best) { best = n; bi = r; } } return bi; }
+function openMapper(p) {
+  MAP = { wb: p.wb, name: p.name, ds: "ACX", sheet: p.wb.SheetNames.find(n => !/dropdown|list|lookup|pivot/i.test(n)) || p.wb.SheetNames[0] };
+  let el = $("#mapper");
+  if (!el) { el = document.createElement("div"); el.id = "mapper"; el.className = "mapper"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-labelledby", "mapT"); document.body.appendChild(el); }
+  el.hidden = false; mapperSheet(MAP.sheet);
+}
+function mapperSheet(name) {
+  MAP.sheet = name; MAP.rows = XLSX.utils.sheet_to_json(MAP.wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true }); MAP.hr = guessHeaderRow(MAP.rows); mapperDraw(true);
+}
+function mapperDraw(guess) {
+  const hdr = (MAP.rows[MAP.hr] || []).map(c => txt(c)), H = hdr.map(norm), fields = MAP_FIELDS[MAP.ds];
+  if (guess) { MAP.sel = {}; const used = new Set();
+    for (const [f, , , kw] of fields) { const al = DATASETS[MAP.ds].fields[f] || [];
+      let i = al.map(a => H.indexOf(a.replace(/\$$/, ""))).find(x => x >= 0) ?? -1;
+      if (i < 0 || used.has(i)) i = H.findIndex((h, j) => h && !used.has(j) && kw.some(w => h.includes(w)));
+      if (i >= 0) { MAP.sel[f] = i; used.add(i); } } }
+  const sample = i => { for (let r = MAP.hr + 1; r < Math.min(MAP.rows.length, MAP.hr + 30); r++) { const v = (MAP.rows[r] || [])[i]; if (v != null && String(v).trim()) return typeof v === "number" && v > 20000 && v < 80000 && toDate(v) ? fmtL(toDate(v)) : String(v).slice(0, 40); } return ""; };
+  const dataRows = MAP.rows.slice(MAP.hr + 1).filter(r => (r || []).some(c => c != null && String(c).trim())).length;
+  $("#mapper").innerHTML = `<div class="mbox"><h3 id="mapT">Match the columns in “${esc(MAP.name)}”</h3>
+    <p class="sub">This file was not recognised automatically. Choose which column holds each field. Your choice is saved in this browser, so the same export imports automatically next time.</p>
+    <div class="mrow"><label class="ctl" for="mapDs">Data type <select id="mapDs"><option value="ACX">Aconex issues</option></select></label>
+      <label class="ctl" for="mapSheet">Sheet <select id="mapSheet">${MAP.wb.SheetNames.map(n => `<option ${n === MAP.sheet ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
+      <label class="ctl" for="mapHr">Header row <input type="number" id="mapHr" min="1" max="60" value="${MAP.hr + 1}" style="width:70px"></label><span class="fsum">${dataRows} rows below the header</span></div>
+    <div class="mgrid">${fields.map(([f, l, req]) => `<label class="fld" for="mf-${f}"><span>${l}${req ? ' <em class="req">required</em>' : ""}</span>
+      <select id="mf-${f}"><option value="">Not in this file</option>${hdr.map((h, i) => h ? `<option value="${i}" ${MAP.sel[f] === i ? "selected" : ""}>${esc(h)}</option>` : "").join("")}</select>
+      <small>${MAP.sel[f] != null ? "e.g. " + esc(sample(MAP.sel[f])) : "&nbsp;"}</small></label>`).join("")}</div>
+    <p class="merr" id="mapErr" hidden></p>
+    <div class="mact"><button class="btn" type="button" id="mapCancel">Cancel</button><button class="btn primary" type="button" id="mapGo">Import ${dataRows} rows</button></div></div>`;
+  $("#mapSheet").addEventListener("change", e => mapperSheet(e.target.value));
+  $("#mapHr").addEventListener("change", e => { MAP.hr = Math.max(0, Math.min(59, (+e.target.value || 1) - 1)); mapperDraw(true); });
+  for (const [f] of fields) $("#mf-" + f).addEventListener("change", e => { if (e.target.value === "") delete MAP.sel[f]; else MAP.sel[f] = +e.target.value; mapperDraw(false); });
+  $("#mapCancel").addEventListener("click", () => { $("#mapper").hidden = true; MAP = null; });
+  $("#mapGo").addEventListener("click", mapperImport);
+  $("#mapGo").focus();
+}
+function mapperImport() {
+  const fields = MAP_FIELDS[MAP.ds], miss = fields.filter(([f, , req]) => req && MAP.sel[f] == null).map(x => x[1]);
+  if (miss.length) { const e = $("#mapErr"); e.textContent = `Choose a column for: ${miss.join(", ")}.`; e.hidden = false; return; }
+  const H = (MAP.rows[MAP.hr] || []).map(norm), saved = load(COLMAP_KEY) || {}; saved[MAP.ds] = {};
+  const ds = { required: "ref", fields: {} };
+  for (const f in MAP.sel) { saved[MAP.ds][f] = H[MAP.sel[f]]; ds.fields[f] = [H[MAP.sel[f]] + "$"]; }
+  store(COLMAP_KEY, saved); applyColmap();
+  const res = extract(MAP.rows, MAP.hr, ds);
+  if (S.demo) leaveDemo();
+  S.data.ACX = cleanACX(res.rows); S.meta.ACX = { file: MAP.name, sheet: MAP.sheet, missing: [], loaded: new Date().toISOString() };
+  if (!S.to) { const all = S.data.ACX.map(r => r.issue).filter(Boolean); S.to = all.length ? new Date(Math.max(...all)) : new Date(); S.from = addD(S.to, -6); }
+  const n = S.data.ACX.length, undated = S.data.ACX.filter(r => !r.issue).length;
+  $("#mapper").hidden = true; MAP = null; persist(); location.hash = "aconex"; render(); snapshot();
+  toast(`Aconex: ${n} issues imported.${undated ? ` ${undated} have no readable raised date (see Data Checks).` : ""} Column matches saved for next time.`, 6000);
 }
 
 /* =====================================================================
@@ -959,6 +1037,7 @@ const rerender = () => { if (A) render(); };
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerender);
 new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
+applyColmap();
 applyBrand();
 if (!restore()) demo();
 render();
