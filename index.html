@@ -198,7 +198,7 @@ tbody tr:hover td{background:var(--surface-2)}
 </header>
 <div class="wrap"><main id="view"></main>
   <div class="foot">
-    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30c</span>
+    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30d</span>
     <button class="btn" id="clearBtn" type="button">Clear stored data</button>
   </div>
 </div>
@@ -910,21 +910,39 @@ function afterINC() { const scope = A.view.scope;
 
 /* ---------- shared pieces for Aconex and Critical Risk (filters come from the file's own columns) ---------- */
 const fv = v => v == null ? "" : txt(v);
-function autoCols(k, rows) {
-  const m = S.meta[k] || {}, skip = new Set(Object.entries(m.cols || {}).filter(([f]) => GEN_SKIP.includes(f)).map(([, h]) => h)), order = m.headers || [];
-  const cnt = {}; for (const r of rows) for (const h in (r._x || {})) { if (skip.has(h)) continue; const v = fv(r._x[h]); if (!v) continue; (cnt[h] = cnt[h] || new Map()).set(v, (cnt[h].get(v) || 0) + 1); }
-  return Object.keys(cnt).filter(h => cnt[h].size >= 2 && cnt[h].size <= 80 && [...cnt[h].values()].reduce((a, b) => a + b, 0) >= Math.min(3, rows.length))
-    .sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
+// Column profile: values per column, with multi-value cells ("A; B; C") split into separate values
+const SPLIT = /\s*(?:;|\||\n|\r|,\s(?=[A-Z]))\s*/, SPLIT_NAMES = /\s*(?:;|\||\n|\r)\s*/;
+const splitter = h => /by$|by\b|name|user|person|assign|owner|author/i.test(h) ? SPLIT_NAMES : SPLIT;
+const EXTRA_KEY = "hse-dash-extra-filters";
+let EXTRA = load(EXTRA_KEY) || {};
+const PROF = {};
+function profile(k, rows) {
+  const sig = rows.length + ":" + (S.meta[k] && S.meta[k].loaded); if (PROF[k] && PROF[k].sig === sig) return PROF[k];
+  const m = S.meta[k] || {}, skip = new Set(Object.entries(m.cols || {}).filter(([f]) => GEN_SKIP.includes(f)).map(([, h]) => h)), cols = {};
+  for (const r of rows) for (const h in (r._x || {})) { const raw = fv(r._x[h]); if (!raw) continue; const c = cols[h] = cols[h] || { filled: 0, whole: new Map(), parts: new Map(), multi: 0 };
+    c.filled++; c.whole.set(raw, (c.whole.get(raw) || 0) + 1); const parts = raw.split(splitter(h)).filter(Boolean); if (parts.length > 1) c.multi++; for (const p of parts) c.parts.set(p, (c.parts.get(p) || 0) + 1); }
+  const out = { sig, skip, cols: {}, order: (m.headers || Object.keys(cols)).filter(h => cols[h]) };
+  for (const h in cols) { const c = cols[h], isMulti = c.multi >= Math.max(2, c.filled * 0.05) && c.parts.size < c.whole.size, n = isMulti ? c.parts.size : c.whole.size;
+    out.cols[h] = { filled: c.filled, multi: isMulti, distinct: n, auto: !skip.has(h) && n >= 2 && n <= 80 && c.filled >= Math.min(3, rows.length),
+      why: skip.has(h) ? "used for a main field" : n < 2 ? "only one value" : n > 80 ? `${n} different values` : c.filled < 3 ? "almost empty" : "" }; }
+  return PROF[k] = out;
 }
+function cellVals(k, r, h) { const raw = fv((r._x || {})[h]); if (!raw) return []; const P = PROF[k]; return P && P.cols[h] && P.cols[h].multi ? raw.split(splitter(h)).filter(Boolean) : [raw]; }
+function autoCols(k, rows) { const P = profile(k, rows), extra = (EXTRA[k] || []).filter(h => P.cols[h]);
+  return [...P.order.filter(h => P.cols[h].auto), ...extra.filter(h => !P.cols[h].auto)]; }
+// Rows repeated once per value, so multi-value columns count each value
+function explode(k, rows, h) { return rows.flatMap(r => { const v = cellVals(k, r, h); return (v.length ? v : ["(blank)"]).map(x => { const o = Object.create(r); o.__k = x; return o; }); }); }
 const GEN_SKIP = ["ref", "title", "desc", "hazard", "remarks", "issue", "due", "closure", "approved", "review", "initRisk", "resRisk", "controls"];
-function genScope(k, all) { const st = UI[k]; return all.filter(r => Object.entries(st.f).every(([h, v]) => !v || fv((r._x || {})[h]) === v) && match(st.q, r.ref, r.title, r.desc, r.hazard, Object.values(r._x || {}).join(" "))); }
+function genScope(k, all) { const st = UI[k]; profile(k, all); return all.filter(r => Object.entries(st.f).every(([h, v]) => !v || cellVals(k, r, h).includes(v)) && match(st.q, r.ref, r.title, r.desc, r.hazard, Object.values(r._x || {}).join(" "))); }
 function genFilterBar(k, cols, shown, total, noun) {
   const st = UI[k], all = A[k].rows;
-  const vals = h => [...new Set(all.map(r => fv((r._x || {})[h])).filter(Boolean))].sort();
+  const P = profile(k, all), vals = h => [...new Set(all.flatMap(r => cellVals(k, r, h)))].sort();
+  const others = P.order.filter(h => !cols.includes(h) && !P.skip.has(h));
   const active = Object.entries(st.f).filter(([, v]) => v).map(([h, v]) => `${h}: ${v}`); if (st.q) active.unshift(`Search “${st.q}”`);
   return `<section class="fbar${active.length ? " on" : ""}"><div class="filters"><span class="flab">Filter</span>
     <input type="search" id="q-${k}" placeholder="Search…" value="${esc(st.q)}" aria-label="Search">
     ${cols.map((h, i) => `<label class="ctl" for="af-${k}-${i}">${esc(h)}<select id="af-${k}-${i}" data-col="${esc(h)}"><option value="">All</option>${vals(h).map(v => `<option ${st.f[h] === v ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>`).join("")}
+    ${others.length ? `<label class="ctl" for="addf-${k}">Add filter<select id="addf-${k}"><option value="">More columns…</option>${others.map(h => `<option>${esc(h)}</option>`).join("")}</select></label>` : ""}
     ${active.length ? `<button class="btn" type="button" data-clear="${k}">Clear filters</button>` : ""}</div>
     <div class="fsum">${active.length ? `Showing <b>${shown}</b> of ${total} ${noun} · ${active.map(esc).join(" · ")}. Tiles and charts below use this selection.` : `Showing all ${total} ${noun}. These filters come from the columns in your file; pick one, or click a bar in a chart, to narrow every tile and chart below.`}</div></section>`;
 }
@@ -932,6 +950,7 @@ function wireGenFilters(k) {
   const st = UI[k], q = document.getElementById(`q-${k}`); if (q) q.addEventListener("input", () => { st.q = q.value; render(`q-${k}`); });
   document.querySelectorAll(`[id^="af-${k}-"]`).forEach(el => el.addEventListener("change", () => { st.f[el.dataset.col] = el.value; render(); }));
   document.querySelectorAll(`[data-clear="${k}"]`).forEach(b => b.addEventListener("click", () => { st.q = ""; st.f = {}; render(); }));
+  const add = document.getElementById(`addf-${k}`); if (add) add.addEventListener("change", () => { if (!add.value) return; EXTRA[k] = [...new Set([...(EXTRA[k] || []), add.value])]; store(EXTRA_KEY, EXTRA); UI[k].tr = add.value; render(); });
 }
 const colOf = (k, f) => (S.meta[k] && S.meta[k].cols || {})[f];
 function bySel(k, key, cols, label) { const cur = UI[k][key]; return `<select id="by-${k}-${key}" aria-label="${label}">${cols.map(h => `<option ${h === cur ? "selected" : ""}>${esc(h)}</option>`).join("")}</select>`; }
@@ -950,6 +969,8 @@ function readPanel(k, rows, labels, dateF) {
     return `<tr><td>${l}</td><td><span class="mono">${esc(h)}</span></td><td>${info}</td></tr>`; }).join("");
   return `<details class="card readp" id="read-${k}"><summary><b>How this file was read</b> · ${esc(m.file || "")}${m.sheet ? ` · sheet “${esc(m.sheet)}”` : ""}${m.hr != null ? ` · header row ${m.hr + 1}` : ""}</summary>
     <div class="tablebox" style="margin-top:10px"><table><thead><tr><th>Field</th><th>Column in your file</th><th>What was read</th></tr></thead><tbody>${lines}</tbody></table></div>
+    ${(P => `<h3 style="margin:14px 0 6px;font-size:13px">All columns in the file</h3><div class="tablebox"><table><thead><tr><th>Column</th><th>Rows filled</th><th>Different values</th><th>Shown as filter</th></tr></thead><tbody>
+      ${P.order.map(h => { const c = P.cols[h]; return `<tr><td><span class="mono">${esc(h)}</span></td><td class="n">${c.filled}</td><td class="n">${c.distinct}${c.multi ? " (split)" : ""}</td><td>${c.auto ? "Yes" : (EXTRA[k] || []).includes(h) ? "Yes (added)" : `No · ${esc(c.why)}`}</td></tr>`; }).join("")}</tbody></table></div>`)(profile(k, rows))}
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px"><button class="btn" type="button" data-rematch="${k}">Choose columns again</button><span class="fsum">Then load the file again; the column panel will open.</span></div></details>`;
 }
 function wireRead(k) { document.querySelectorAll(`[data-rematch="${k}"]`).forEach(b => b.addEventListener("click", () => { FORCE_MAP = k; $("#file").click(); })); }
@@ -957,23 +978,24 @@ let FORCE_MAP = null;
 // Data imported by an older version has no copy of the file's columns, so filters, trends and date checks cannot work until the file is loaded again
 function staleNote(k, label) { const rows = S.data[k]; if (S.demo || !rows.length || rows.some(r => r._x && Object.keys(r._x).length)) return "";
   return `<div class="banner" style="background:var(--crit-bg);border-color:var(--crit)"><span><b>This ${label} data was imported by an older version of the app</b> and is still saved in your browser. Load the ${label} file again to read the dates and build the filters and trends.</span><button class="btn primary" type="button" data-act="load">Load ${label} file</button></div>`; }
-function trendPick(k, cols) { if (!cols.includes(UI[k].tr)) { const m = S.meta[k] || {}; UI[k].tr = cols.find(h => /hazard/i.test(h)) || [m.cols && m.cols.category, m.cols && m.cols.risk, m.cols && m.cols.type].find(h => h && cols.includes(h)) || cols[0] || ""; } return UI[k].tr; }
+function trendPick(k, cols) { if (!cols.includes(UI[k].tr)) { const m = S.meta[k] || {}; UI[k].tr = cols.find(h => /hazard/i.test(h)) || cols.find(h => /categor/i.test(h)) || [m.cols && m.cols.category, m.cols && m.cols.risk, m.cols && m.cols.type].find(h => h && cols.includes(h)) || cols[0] || ""; } return UI[k].tr; }
 function trendSection(k, scope, cols, noun) {
   const h = trendPick(k, cols); if (!h) return "";
-  const key = xv(h), C = A.C, rows = scope.filter(r => r.issue), m13 = A.months[0];
+  const key = r => r.__k, C = A.C, ex = explode(k, scope, h), rows = ex.filter(r => r.issue), m13 = A.months[0];
   const vals = topKeys(rows.filter(r => r.issue >= m13), key, 12).filter(v => v !== "(blank)");
   const line = v => { const now = cnt(rows, r => key(r) === v && inR(r.issue, C.perStart, C.rpt)), prev = cnt(rows, r => key(r) === v && inR(r.issue, C.prevStart, C.prevEnd));
-    const d90 = cnt(rows, r => key(r) === v && inR(r.issue, addD(C.rpt, -89), C.rpt)), tot = cnt(rows, r => key(r) === v && r.issue >= m13), open = cnt(scope, r => key(r) === v && r.isOpen);
+    const d90 = cnt(rows, r => key(r) === v && inR(r.issue, addD(C.rpt, -89), C.rpt)), tot = cnt(rows, r => key(r) === v && r.issue >= m13), open = cnt(ex, r => key(r) === v && r.isOpen);
     const d = now - prev, arrow = d > 0 ? `<span class="pill p-crit">▲ ${d}</span>` : d < 0 ? `<span class="pill p-good">▼ ${-d}</span>` : `<span class="pill p-mute">no change</span>`;
     return `<tr data-trv="${esc(v)}" style="cursor:pointer"><td>${esc(v)}</td><td class="n">${now}</td><td class="n">${prev}</td><td>${arrow}</td><td class="n">${d90}</td><td class="n">${tot}</td><td class="n">${open}</td></tr>`; };
   const blank = cnt(rows, r => r.issue >= m13 && key(r) === "(blank)");
-  return `<section class="card"><h3>Trend by ${bySel(k, "tr", cols, "Trend column")}</h3><p class="sub">${noun} per month by ${esc(h)}, top 5 shown${blank ? ` · ${blank} with no ${esc(h)} not shown` : ""} · click a bar or a row to filter the whole tab</p>
+  const multi = PROF[k] && PROF[k].cols[h] && PROF[k].cols[h].multi;
+  return `<section class="card"><h3>Trend by ${bySel(k, "tr", cols, "Trend column")}</h3><p class="sub">${noun} per month by ${esc(h)}, top 5 shown${multi ? " · cells with several values are counted under each value" : ""}${blank ? ` · ${blank} with no ${esc(h)} not shown` : ""} · click a bar or a row to filter the whole tab</p>
     <div class="cv tall"><canvas id="tr-${k}" role="img" aria-label="Trend by ${esc(h)}"></canvas></div>
     <div class="tablebox" style="margin-top:12px"><table><thead><tr><th>${esc(h)}</th><th>This period</th><th>Previous ${A.per} days</th><th>Change</th><th>Last 90 days</th><th>Last 13 months</th><th>Open now</th></tr></thead>
     <tbody>${vals.map(line).join("") || `<tr><td colspan="7" style="color:var(--muted)">No dated items for this column.</td></tr>`}</tbody></table></div></section>`;
 }
 function wireTrend(k, scope) { const h = UI[k].tr; if (!h) return; const set = v => { UI[k].f[h] = v; render(); };
-  draw(`tr-${k}`, p => CFG.trend(p, scope, xv(h), (e, els, ch) => { if (els.length) { const lab = ch.data.datasets[els[0].datasetIndex].label; if (lab !== "Other") set(lab); } }));
+  draw(`tr-${k}`, p => CFG.trend(p, explode(k, scope, h), "__k", (e, els, ch) => { if (els.length) { const lab = ch.data.datasets[els[0].datasetIndex].label; if (lab !== "Other") set(lab); } }));
   wireBy(k, "tr"); document.querySelectorAll("[data-trv]").forEach(tr => tr.addEventListener("click", () => set(tr.dataset.trv))); }
 function afterTo(k, rows, what) { const late = rows.filter(r => r.issue && r.issue > A.rpt); if (!late.length) return "";
   const last = new Date(Math.max(...late.map(r => +r.issue)));
@@ -1011,8 +1033,8 @@ function vACX() {
 }
 function afterACX() { if (!S.data.ACX.length) return; const { scope, cols } = A.view, D = fStats(scope, A.C), st = UI.ACX;
   draw("xc1", p => CFG.monthly(p, D, ["Raised", "Closed"])); draw("xc2", p => CFG.age(p, [["Aconex", D]]));
-  if (st.by) draw("xc3", p => CFG.split(p, scope, xv(st.by), (e, els, ch) => { if (els.length) { st.f[st.by] = ch.data.labels[els[0].index]; render(); } }));
-  if (st.by2) draw("xc4", p => CFG.topBy(p, scope.filter(r => r.isOpen), xv(st.by2), (e, els, ch) => { if (els.length) { st.f[st.by2] = ch.data.labels[els[0].index]; render(); } }, 8, "Open issues"));
+  if (st.by) draw("xc3", p => CFG.split(p, explode("ACX", scope, st.by), "__k", (e, els, ch) => { if (els.length) { st.f[st.by] = ch.data.labels[els[0].index]; render(); } }));
+  if (st.by2) draw("xc4", p => CFG.topBy(p, explode("ACX", scope.filter(r => r.isOpen), st.by2), "__k", (e, els, ch) => { if (els.length) { st.f[st.by2] = ch.data.labels[els[0].index]; render(); } }, 8, "Open issues"));
   wireTrend("ACX", scope); wireGenFilters("ACX"); wireBy("ACX", "by"); wireBy("ACX", "by2"); wireList("ACX", "t-ACX"); wireRead("ACX"); }
 
 /* ---------- Critical risk assessments ---------- */
@@ -1057,10 +1079,10 @@ function vCRA() {
   ${readPanel("CRA", all, [["ref", "Reference"], ["title", "Activity"], ["risk", "Critical risk"], ["hazard", "Hazard"], ["contractor", "Contractor"], ["status", "Status"], ["initRisk", "Initial risk"], ["resRisk", "Residual risk"], ["issue", "Submitted date"], ["approved", "Approved date"], ["review", "Review / expiry date"]], ["issue", "approved", "review"])}`;
 }
 function afterCRA() { if (!S.data.CRA.length) return; const { scope } = A.view, D = cStats(scope, A.C), st = UI.CRA;
-  if (st.by) draw("rc1", p => CFG.stack(p, scope, xv(st.by), r => r.group, CRA_GROUPS.slice(0, 4).map(g => g[0]), (e, els, ch) => { if (els.length) { st.f[st.by] = ch.data.labels[els[0].index]; render(); } }));
+  if (st.by) draw("rc1", p => CFG.stack(p, explode("CRA", scope, st.by), "__k", r => r.group, CRA_GROUPS.slice(0, 4).map(g => g[0]), (e, els, ch) => { if (els.length) { st.f[st.by] = ch.data.labels[els[0].index]; render(); } }));
   draw("rc2", p => CFG.monthly(p, D, ["Submitted", "Approved"]));
   draw("rc3", p => { const L = ["High", "Medium", "Low"]; return { type: "bar", data: { labels: L, datasets: [bar("Initial", L.map(l => cnt(scope, r => r.initLevel === l)), p.s[1]), bar("Residual", L.map(l => cnt(scope, r => r.resLevel === l)), p.s[0])] }, options: opts(p) }; });
-  if (st.by2) draw("rc4", p => CFG.topBy(p, scope.filter(r => r.isOpen), xv(st.by2), (e, els, ch) => { if (els.length) { st.f[st.by2] = ch.data.labels[els[0].index]; render(); } }, 8, "Needing action"));
+  if (st.by2) draw("rc4", p => CFG.topBy(p, explode("CRA", scope.filter(r => r.isOpen), st.by2), "__k", (e, els, ch) => { if (els.length) { st.f[st.by2] = ch.data.labels[els[0].index]; render(); } }, 8, "Needing action"));
   wireTrend("CRA", scope); wireGenFilters("CRA"); wireBy("CRA", "by"); wireBy("CRA", "by2"); wireList("CRA", "t-CRA"); wireRead("CRA"); }
 
 /* ---------- open items ---------- */
