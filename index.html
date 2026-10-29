@@ -198,7 +198,7 @@ tbody tr:hover td{background:var(--surface-2)}
 </header>
 <div class="wrap"><main id="view"></main>
   <div class="foot">
-    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30</span>
+    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30b</span>
     <button class="btn" id="clearBtn" type="button">Clear stored data</button>
   </div>
 </div>
@@ -240,12 +240,12 @@ const DATASETS = {
   // Aconex issues export: detected by an issue-number, status and raised/created-date column in the same header row
   ACX: { label: "Aconex", detect: [["ref"], ["status"], ["issue"]], keepAll: true, required: "ref", optional: ["title", "desc", "type", "category", "priority", "raisedBy", "raisedOrg", "assignedOrg", "assignedTo", "location", "due", "closure", "remarks"], fields: {
     ref: ["issueid", "issueno", "issueno.", "issuenumber", "issue#", "issueref", "issuereference", "id$", "no$", "no.$", "number$", "reference$"],
-    title: ["title", "issuetitle", "subject", "summary"], desc: ["description$", "details$", "issuedescription"], type: ["issuetype", "type$"], category: ["category$", "issuecategory", "categories$"],
+    title: ["title", "issuetitle", "subject", "summary"], desc: ["description$", "details$", "issuedescription"], type: ["issuetype", "type$"], category: ["hazardcategory", "hswhazardcategory", "hazardtype", "category$", "issuecategory", "categories$"],
     status: ["status", "issuestatus", "state$"], priority: ["priority", "severity$"], raisedBy: ["raisedbyuser", "raisedby$", "createdby$", "createdbyuser", "reportedby", "author$", "originator$"],
     raisedOrg: ["raisedbyorganization", "raisedbyorganisation", "raisedbycompany", "createdbyorganization", "createdbyorganisation", "originatororganization", "originatororganisation"],
     assignedOrg: ["assignedtoorganization", "assignedtoorganisation", "assignedorganization", "assignedorganisation", "responsibleorganization", "responsibleorganisation", "responsiblecompany", "assignedtocompany", "organization$", "organisation$"],
     assignedTo: ["assignedto", "assignee", "responsibleperson", "responsible$", "assignedtouser"], location: ["location", "area$", "zone$"],
-    issue: ["dateraised", "raiseddate", "raisedon", "raisedat", "datecreated", "createddate", "createdon", "createdat", "dateopened", "openeddate", "dateissued", "issueddate", "created$", "opened$", "raised$", "issued$", "date$"],
+    issue: ["capturedon", "datecaptured", "captureddate", "capturedate", "capturedat", "captured$", "dateraised", "raiseddate", "raisedon", "raisedat", "datecreated", "createddate", "createdon", "createdat", "dateopened", "openeddate", "dateissued", "issueddate", "created$", "opened$", "raised$", "issued$", "date$"],
     due: ["duedate", "datedue", "due$", "targetdate", "responsedue"], closure: ["dateclosed", "closeddate", "closedon", "datecompleted", "completeddate", "closed$"],
     remarks: ["comments", "remarks", "notes"] } },
   // Critical risk assessment register: detected by a reference column plus a risk / hazard column in the same header row
@@ -445,7 +445,7 @@ const S = { data: emptyData(), meta: {}, from: null, to: null, demo: false };
 function emptyData() { return { NCR: [], SOR: [], SWN: [], INC: [], ACX: [], CRA: [] }; }
 const UI = { NCR: { q: "", cat: "", who: "", sev: "", st: "open", sort: ["age", -1] }, SOR: { q: "", cat: "", who: "", sev: "", st: "open", sort: ["age", -1] },
   SWN: { q: "", theme: "", st: "", sort: ["issue", -1] }, INC: { q: "", grp: "", cat: "", st: "", sort: ["date", -1] },
-  ACX: { q: "", f: {}, by: "", by2: "", st: "open", sort: ["age", -1] }, CRA: { q: "", f: {}, by: "", by2: "", st: "", sort: ["issue", -1] }, OPEN: { ds: "", bucket: "", sort: ["age", -1] } };
+  ACX: { q: "", f: {}, by: "", by2: "", tr: "", st: "open", sort: ["age", -1] }, CRA: { q: "", f: {}, by: "", by2: "", tr: "", st: "", sort: ["issue", -1] }, OPEN: { ds: "", bucket: "", sort: ["age", -1] } };
 
 function persist() {
   const plain = JSON.parse(JSON.stringify({ data: S.data, meta: S.meta, from: iso(S.from), to: iso(S.to), demo: S.demo }));
@@ -709,6 +709,11 @@ const CFG = {
     return { type: "bar", data: { labels: keys, datasets: [stackBar("Open", keys.map(k => cnt(rows, r => kv(r, key) === k && r.isOpen)), p.s[1], p), stackBar("Closed / terminated", keys.map(k => cnt(rows, r => kv(r, key) === k && !r.isOpen)), p.closed, p)] }, options: opts(p, { stacked: true, horizontal: true, onClick }) }; },
   stack: (p, rows, key, gfn, groups, onClick, n = 10) => { const keys = topKeys(rows, key, n), col = { Approved: p.s[2], "Under review": p.s[0], Rejected: p.crit, Superseded: p.closed };
     return { type: "bar", data: { labels: keys, datasets: groups.map((g, i) => stackBar(g, keys.map(k => cnt(rows, r => kv(r, key) === k && gfn(r) === g)), col[g] || p.s[i], p)) }, options: opts(p, { stacked: true, horizontal: true, onClick }) }; },
+  trend: (p, rows, key, onClick, n = 5) => { const inWin = rows.filter(r => r.issue && r.issue >= A.months[0] && r.issue <= A.rpt), keys = topKeys(inWin.filter(r => kv(r, key) !== "(blank)"), key, n);
+    const ds = keys.map((k, i) => stackBar(k, A.months.map(m => cnt(inWin, r => kv(r, key) === k && inR(r.issue, m, eom(m)))), p.s[i], p));
+    const other = A.months.map(m => cnt(inWin, r => kv(r, key) !== "(blank)" && !keys.includes(kv(r, key)) && inR(r.issue, m, eom(m))));
+    if (other.some(Boolean)) ds.push(stackBar("Other", other, p.closed, p));
+    return { type: "bar", data: { labels: A.mLabels, datasets: ds }, options: opts(p, { stacked: true, onClick }) }; },
   swnThemes: (p, rows, onClick) => { const th = [...SWN_THEMES.map(t => t[0]), "Other"].filter(t => rows.some(r => r.theme === t));
     return { type: "bar", data: { labels: th, datasets: [bar("Issued", th.map(t => cnt(rows, r => r.theme === t)), p.s[0]), bar("Still open", th.map(t => cnt(rows, r => r.theme === t && r.isOpen)), p.s[1])] }, options: opts(p, { horizontal: true, onClick }) }; },
 };
@@ -908,7 +913,7 @@ const fv = v => v == null ? "" : txt(v);
 function autoCols(k, rows) {
   const m = S.meta[k] || {}, skip = new Set(Object.entries(m.cols || {}).filter(([f]) => GEN_SKIP.includes(f)).map(([, h]) => h)), order = m.headers || [];
   const cnt = {}; for (const r of rows) for (const h in (r._x || {})) { if (skip.has(h)) continue; const v = fv(r._x[h]); if (!v) continue; (cnt[h] = cnt[h] || new Map()).set(v, (cnt[h].get(v) || 0) + 1); }
-  return Object.keys(cnt).filter(h => cnt[h].size >= 2 && cnt[h].size <= 40 && [...cnt[h].values()].reduce((a, b) => a + b, 0) >= rows.length * 0.25)
+  return Object.keys(cnt).filter(h => cnt[h].size >= 2 && cnt[h].size <= 80 && [...cnt[h].values()].reduce((a, b) => a + b, 0) >= Math.min(3, rows.length))
     .sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
 }
 const GEN_SKIP = ["ref", "title", "desc", "hazard", "remarks", "issue", "due", "closure", "approved", "review", "initRisk", "resRisk", "controls"];
@@ -949,6 +954,24 @@ function readPanel(k, rows, labels, dateF) {
 }
 function wireRead(k) { document.querySelectorAll(`[data-rematch="${k}"]`).forEach(b => b.addEventListener("click", () => { FORCE_MAP = k; $("#file").click(); })); }
 let FORCE_MAP = null;
+function trendPick(k, cols) { if (!cols.includes(UI[k].tr)) { const m = S.meta[k] || {}; UI[k].tr = cols.find(h => /hazard/i.test(h)) || [m.cols && m.cols.category, m.cols && m.cols.risk, m.cols && m.cols.type].find(h => h && cols.includes(h)) || cols[0] || ""; } return UI[k].tr; }
+function trendSection(k, scope, cols, noun) {
+  const h = trendPick(k, cols); if (!h) return "";
+  const key = xv(h), C = A.C, rows = scope.filter(r => r.issue), m13 = A.months[0];
+  const vals = topKeys(rows.filter(r => r.issue >= m13), key, 12).filter(v => v !== "(blank)");
+  const line = v => { const now = cnt(rows, r => key(r) === v && inR(r.issue, C.perStart, C.rpt)), prev = cnt(rows, r => key(r) === v && inR(r.issue, C.prevStart, C.prevEnd));
+    const d90 = cnt(rows, r => key(r) === v && inR(r.issue, addD(C.rpt, -89), C.rpt)), tot = cnt(rows, r => key(r) === v && r.issue >= m13), open = cnt(scope, r => key(r) === v && r.isOpen);
+    const d = now - prev, arrow = d > 0 ? `<span class="pill p-crit">▲ ${d}</span>` : d < 0 ? `<span class="pill p-good">▼ ${-d}</span>` : `<span class="pill p-mute">no change</span>`;
+    return `<tr data-trv="${esc(v)}" style="cursor:pointer"><td>${esc(v)}</td><td class="n">${now}</td><td class="n">${prev}</td><td>${arrow}</td><td class="n">${d90}</td><td class="n">${tot}</td><td class="n">${open}</td></tr>`; };
+  const blank = cnt(rows, r => r.issue >= m13 && key(r) === "(blank)");
+  return `<section class="card"><h3>Trend by ${bySel(k, "tr", cols, "Trend column")}</h3><p class="sub">${noun} per month by ${esc(h)}, top 5 shown${blank ? ` · ${blank} with no ${esc(h)} not shown` : ""} · click a bar or a row to filter the whole tab</p>
+    <div class="cv tall"><canvas id="tr-${k}" role="img" aria-label="Trend by ${esc(h)}"></canvas></div>
+    <div class="tablebox" style="margin-top:12px"><table><thead><tr><th>${esc(h)}</th><th>This period</th><th>Previous ${A.per} days</th><th>Change</th><th>Last 90 days</th><th>Last 13 months</th><th>Open now</th></tr></thead>
+    <tbody>${vals.map(line).join("") || `<tr><td colspan="7" style="color:var(--muted)">No dated items for this column.</td></tr>`}</tbody></table></div></section>`;
+}
+function wireTrend(k, scope) { const h = UI[k].tr; if (!h) return; const set = v => { UI[k].f[h] = v; render(); };
+  draw(`tr-${k}`, p => CFG.trend(p, scope, xv(h), (e, els, ch) => { if (els.length) { const lab = ch.data.datasets[els[0].datasetIndex].label; if (lab !== "Other") set(lab); } }));
+  wireBy(k, "tr"); document.querySelectorAll("[data-trv]").forEach(tr => tr.addEventListener("click", () => set(tr.dataset.trv))); }
 function afterTo(k, rows, what) { const late = rows.filter(r => r.issue && r.issue > A.rpt); if (!late.length) return "";
   const last = new Date(Math.max(...late.map(r => +r.issue)));
   return `<div class="banner"><span><b>${late.length} ${what} after ${fmtL(A.rpt)}</b> (up to ${fmtL(last)}) are outside the period, because the To date comes from the NCR / SOR tracker header. Move the To date to include them.</span><button class="btn" type="button" data-setto="${iso(last)}">Set To date to ${fmt(last, {})}</button></div>`; }
@@ -976,17 +999,18 @@ function vACX() {
     ${tile("Open issues", D.open, `of ${D.total} raised to date`, D.open ? "warn" : "good")}${tile("Past due date", D.overdue, "Open with a due date before the period end", D.overdue ? "crit" : "good")}
     ${tile("Open over 30 days", D.over30, `${D.over60} open over 60 days`, D.over30 ? "crit" : "good")}${tile("Close-out rate", P(D.closeRate), "Closed ÷ raised, excluding cancelled", D.closeRate >= .85 ? "good" : "warn")}
     ${tile("Average days to close", D.avgClose.toFixed(0), "Raised to closed", "", "", "days")}</div></section>
+  ${trendSection("ACX", scope, cols, "Issues raised")}
   <section><div class="grid2">${card("xc1", "Issues raised and closed", "Per month, last 13 months")}${card("xc2", "How long open issues have been open", "Days from raised date to the period end")}
     <div class="card"><h3>Issues by ${by ? bySel("ACX", "by", cols, "Chart breakdown") : "category"}</h3><p class="sub">Open vs closed · click a bar to filter</p><div class="cv"><canvas id="xc3" role="img" aria-label="Issues by ${esc(by)}"></canvas></div></div>
     <div class="card"><h3>Open issues by ${by2 ? bySel("ACX", "by2", cols, "Second chart breakdown") : "organisation"}</h3><p class="sub">Click a bar to filter</p><div class="cv"><canvas id="xc4" role="img" aria-label="Open issues by ${esc(by2)}"></canvas></div></div></div></section>
   <section id="list-ACX">${listHead("ACX", "Aconex issues", [["open", "All open"], ["overdue", "Past due date"], ["over30", "Open over 30 days"], ["closed", "Closed"]])}${table("t-ACX", tbl, scope.filter(statusPass(st.st)), st)}</section>
-  ${readPanel("ACX", all, [["ref", "Issue number"], ["status", "Status"], ["issue", "Raised / created date"], ["closure", "Closed date"], ["due", "Due date"], ["title", "Title"], ["category", "Category"], ["type", "Type"], ["raisedBy", "Raised by"], ["assignedOrg", "Assigned organisation"]], ["issue", "closure", "due"])}`;
+  ${readPanel("ACX", all, [["ref", "Issue number"], ["status", "Status"], ["issue", "Raised / captured date"], ["closure", "Closed date"], ["due", "Due date"], ["title", "Title"], ["category", "Category"], ["type", "Type"], ["raisedBy", "Raised by"], ["assignedOrg", "Assigned organisation"]], ["issue", "closure", "due"])}`;
 }
 function afterACX() { if (!S.data.ACX.length) return; const { scope, cols } = A.view, D = fStats(scope, A.C), st = UI.ACX;
   draw("xc1", p => CFG.monthly(p, D, ["Raised", "Closed"])); draw("xc2", p => CFG.age(p, [["Aconex", D]]));
   if (st.by) draw("xc3", p => CFG.split(p, scope, xv(st.by), (e, els, ch) => { if (els.length) { st.f[st.by] = ch.data.labels[els[0].index]; render(); } }));
   if (st.by2) draw("xc4", p => CFG.topBy(p, scope.filter(r => r.isOpen), xv(st.by2), (e, els, ch) => { if (els.length) { st.f[st.by2] = ch.data.labels[els[0].index]; render(); } }, 8, "Open issues"));
-  wireGenFilters("ACX"); wireBy("ACX", "by"); wireBy("ACX", "by2"); wireList("ACX", "t-ACX"); wireRead("ACX"); }
+  wireTrend("ACX", scope); wireGenFilters("ACX"); wireBy("ACX", "by"); wireBy("ACX", "by2"); wireList("ACX", "t-ACX"); wireRead("ACX"); }
 
 /* ---------- Critical risk assessments ---------- */
 const CRA_GROUPS = [["Approved", "p-good"], ["Under review", "p-info"], ["Rejected", "p-crit"], ["Superseded", "p-mute"], ["No status", "p-mute"]];
@@ -1019,6 +1043,7 @@ function vCRA() {
     ${tile("Rejected", D.rejected, "Resubmission needed", D.rejected ? "crit" : "good")}
     ${tile("Review date passed", D.reviewDue, "Approved CRAs due for review", D.reviewDue ? "crit" : "good")}
     ${colOf("CRA", "resRisk") ? tile("High residual risk", D.high, `${D.highOpen} not yet approved`, D.high ? "crit" : "good") : ""}</div></section>
+  ${trendSection("CRA", scope, cols, "Assessments submitted")}
   <section><div class="grid2">
     <div class="card"><h3>Status by ${by ? bySel("CRA", "by", cols, "Chart breakdown") : "critical risk"}</h3><p class="sub">Click a bar to filter</p><div class="cv tall"><canvas id="rc1" role="img" aria-label="CRA status by ${esc(by)}"></canvas></div></div>
     ${card("rc2", "Submitted and approved", "Per month, last 13 months")}
@@ -1033,7 +1058,7 @@ function afterCRA() { if (!S.data.CRA.length) return; const { scope } = A.view, 
   draw("rc2", p => CFG.monthly(p, D, ["Submitted", "Approved"]));
   draw("rc3", p => { const L = ["High", "Medium", "Low"]; return { type: "bar", data: { labels: L, datasets: [bar("Initial", L.map(l => cnt(scope, r => r.initLevel === l)), p.s[1]), bar("Residual", L.map(l => cnt(scope, r => r.resLevel === l)), p.s[0])] }, options: opts(p) }; });
   if (st.by2) draw("rc4", p => CFG.topBy(p, scope.filter(r => r.isOpen), xv(st.by2), (e, els, ch) => { if (els.length) { st.f[st.by2] = ch.data.labels[els[0].index]; render(); } }, 8, "Needing action"));
-  wireGenFilters("CRA"); wireBy("CRA", "by"); wireBy("CRA", "by2"); wireList("CRA", "t-CRA"); wireRead("CRA"); }
+  wireTrend("CRA", scope); wireGenFilters("CRA"); wireBy("CRA", "by"); wireBy("CRA", "by2"); wireList("CRA", "t-CRA"); wireRead("CRA"); }
 
 /* ---------- open items ---------- */
 function openRows() { return [...A.NCR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "NCR" }, r)), ...A.SOR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "SOR" }, r)),
@@ -1149,12 +1174,12 @@ function leaveDemo() { S.data = emptyData(); S.meta = {}; S.demo = false; S.from
 /* =====================================================================
    Match columns (for files that are not recognised automatically)
    ===================================================================== */
-const MAP_FIELDS = { ACX: [["ref", "Issue number", 1, ["issue", "id", "no", "number", "ref"]], ["status", "Status", 1, ["status", "state"]], ["issue", "Raised / created date", 1, ["raised", "created", "opened", "issued", "date"]],
+const MAP_FIELDS = { ACX: [["ref", "Issue number", 1, ["issue", "id", "no", "number", "ref"]], ["status", "Status", 1, ["status", "state"]], ["issue", "Raised / captured date", 1, ["captur", "raised", "created", "opened", "issued", "date"]],
   ["title", "Title", 0, ["title", "subject", "summary", "name"]], ["type", "Type", 0, ["type", "category", "kind", "discipline"]], ["priority", "Priority", 0, ["priority", "severity"]],
   ["assignedOrg", "Assigned organisation", 0, ["assignedtoorg", "assignedorg", "responsibleorg", "organi", "org", "company", "contractor"]], ["assignedTo", "Assigned person", 0, ["assignedto", "assignee", "responsible"]],
   ["raisedBy", "Raised by", 0, ["raisedby", "createdby", "author", "originator"]], ["location", "Location", 0, ["location", "area", "zone"]],
   ["due", "Due date", 0, ["due", "target", "respond"]], ["closure", "Closed date", 0, ["closed", "completed"]], ["desc", "Description", 0, ["description", "details"]],
-  ["category", "Category", 0, ["category"]]],
+  ["category", "Category", 0, ["hazardcategory", "hazard", "category"]]],
   CRA: [["ref", "Reference", 1, ["ref", "no", "number", "id", "code"]], ["title", "Activity", 0, ["activity", "task", "title", "description", "scope"]], ["risk", "Critical risk", 0, ["criticalrisk", "risk", "category", "type"]],
   ["hazard", "Hazard", 0, ["hazard"]], ["contractor", "Contractor", 0, ["contractor", "company", "organi"]], ["status", "Status", 0, ["status", "code", "approval"]],
   ["initRisk", "Initial risk rating", 0, ["initial", "inherent", "before"]], ["resRisk", "Residual risk rating", 0, ["residual", "after", "final"]],
