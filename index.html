@@ -173,6 +173,11 @@ tbody tr:hover td{background:var(--surface-2)}
 .rule textarea{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;font:13px var(--body);color:var(--ink);width:100%;resize:vertical}
 .readp summary{cursor:pointer;font-size:13px}
 .readp table td{font-size:12.5px}
+.shead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;align-items:flex-start;margin-bottom:6px}
+.shead .filters select{font-size:12px;padding:4px 6px}
+.heat td,.heat th{text-align:center;font-size:12px;padding:6px 6px} .heat td:first-child,.heat th:first-child{text-align:left;white-space:nowrap}
+.hcell{font-variant-numeric:tabular-nums;font-weight:600}
+.hc-g{background:var(--good-bg);color:var(--good)} .hc-a{background:var(--warn-bg);color:color-mix(in srgb,var(--warn) 55%,var(--ink))} .hc-r{background:var(--crit-bg);color:var(--crit)}
 .foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 .drop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(2px)}
 .drop div{border:2px dashed var(--accent);border-radius:12px;padding:40px 48px;background:var(--surface);text-align:center;font:700 20px var(--display);font-stretch:85%;max-width:calc(100% - 32px)}
@@ -198,11 +203,11 @@ tbody tr:hover td{background:var(--surface-2)}
 </header>
 <div class="wrap"><main id="view"></main>
   <div class="foot">
-    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30d</span>
+    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30e</span>
     <button class="btn" id="clearBtn" type="button">Clear stored data</button>
   </div>
 </div>
-<div class="drop" id="drop" hidden><div>Drop tracker files<span>NCR / SOR / Stop Work tracker, incident log, Aconex issues export or CRA register</span></div></div>
+<div class="drop" id="drop" hidden><div>Drop tracker files<span>NCR / SOR / Stop Work tracker, incident log, Aconex issues export or critical risk workbook</span></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
@@ -248,6 +253,11 @@ const DATASETS = {
     issue: ["capturedon", "datecaptured", "captureddate", "capturedate", "capturedat", "captured$", "dateraised", "raiseddate", "raisedon", "raisedat", "datecreated", "createddate", "createdon", "createdat", "dateopened", "openeddate", "dateissued", "issueddate", "created$", "opened$", "raised$", "issued$", "date$"],
     due: ["duedate", "datedue", "due$", "targetdate", "responsedue"], closure: ["dateclosed", "closeddate", "closedon", "datecompleted", "completeddate", "closed$"],
     remarks: ["comments", "remarks", "notes"] } },
+  // Critical risk control assessments summary: one row per assessment with questions asked / yes / no counts
+  CC: { label: "Critical risk controls", detect: [["asked"], ["risk"]], required: "risk", optional: ["date", "month", "project", "contractor", "yes", "no", "closed", "notClosed", "district"], fields: {
+    date: ["date$", "assessmentdate", "dateofassessment"], month: ["month$"], project: ["project$"], district: ["district$"], contractor: ["contractor", "company$"], risk: ["criticalrisk$", "criticalrisktype"],
+    asked: ["numberofquestionsasked", "noofquestionsasked", "questionsasked", "totalquestions", "numberofquestions"], yes: ["#ofyes", "noofyes", "numberofyes", "yes$"], no: ["#ofno", "noofno", "numberofno", "no$"],
+    closed: ["#ofclosedattimeofassessment", "closedattimeofassessment", "noofclosedattimeofassessment"], notClosed: ["#ofnotclosedattimeofassessment", "notclosedattimeofassessment", "noofnotclosedattimeofassessment"] } },
   // Critical risk assessment register: detected by a reference column plus a risk / hazard column in the same header row
   CRA: { label: "Critical risk", detect: [["ref"], ["risk", "hazard", "initRisk", "resRisk"]], keepAll: true, required: "ref",
     optional: ["title", "hazard", "risk", "contractor", "area", "initRisk", "resRisk", "status", "issue", "approved", "review", "rev", "owner", "controls", "remarks"], fields: {
@@ -380,6 +390,10 @@ function parseWorkbook(wb, file) {
     }
     if (found.CRA && found.ACX && found.CRA.sheet === found.ACX.sheet && found.ACX.sheet === name) delete found.ACX;
   }
+  if (found.CC) { const re = /(\d{1,2})[\s.-]*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s.-]*(\d{2,4})?|(\d{1,2})-(\d{1,2})-(\d{2,4})/i, yr = new Date().getFullYear();
+    found.CC.forms = wb.SheetNames.map((n, i) => { const m = n.match(re); if (!m || n === found.CC.sheet) return null; let d;
+      if (m[2]) { let y = m[3] ? +m[3] : yr; if (y < 100) y += 2000; d = mk(y, MONTHS.indexOf(m[2].toLowerCase()) + 1, +m[1]); } else { let y = +m[6]; if (y < 100) y += 2000; d = mk(y, +m[5], +m[4]); }
+      const hidden = wb.Workbook && wb.Workbook.Sheets && wb.Workbook.Sheets[i] && wb.Workbook.Sheets[i].Hidden; return d ? { name: n.trim(), date: iso(d), hidden: !!hidden } : null; }).filter(Boolean); }
   return found;
 }
 
@@ -414,6 +428,20 @@ function cleanACX(raw) {
     raisedBy: person(r.raisedBy), raisedByRaw: txt(r.raisedBy), raisedOrg: txt(r.raisedOrg), assignedOrg: txt(r.assignedOrg), assignedTo: txt(r.assignedTo), location: txt(r.location),
     issue: toDate(r.issue, ord), due: toDate(r.due, ord), closure: toDate(r.closure, ord), remarks: txt(r.remarks), _x: r._x || {} }));
 }
+const num = v => { const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/[^\d.]/g, "")); return isFinite(n) ? n : 0; };
+const CC_RISKS = [[/lift/, "Lifting Operations"], [/excavat/, "Excavations"], [/height|\bwah\b/, "Work at Height"], [/temporary/, "Temporary Works"], [/hot\s*work/, "Hot Works"], [/confined/, "Confined Spaces"],
+  [/plant|p\s*&\s*e/, "Plant and Equipment"], [/heat/, "Working in the Heat"], [/driv/, "Driving"], [/energi[sz]ed|electric/, "Energized Systems"]];
+function ccRisk(t) { const s = txt(t).toLowerCase().replace(/\(.*?\)/g, " ").replace(/[-–]\s*(sc|fc)\b.*$/, " ").replace(/\b(sc|fc)\b/g, " ").replace(/\s+/g, " ").trim();
+  for (const [re, n] of CC_RISKS) if (re.test(s)) return n; return title(s) || "(blank)"; }
+function ccType(t) { const s = txt(t).toUpperCase(), sc = /\bSC\b|SYSTEM/.test(s), fc = /\bFC\b|FIELD/.test(s); return sc && fc ? "System & Field" : sc ? "System controls" : fc ? "Field controls" : "Not stated"; }
+function cleanCC(raw) {
+  const ord = dateOrder(raw.map(r => r.date));
+  return raw.map(r => { const asked = num(r.asked), yes = num(r.yes), no = num(r.no), cl = num(r.closed), ncl = num(r.notClosed);
+    const cap = asked > 0 ? Math.max(asked - yes, 0) : Infinity, nc = Math.min(cap, Math.max(no, cl + ncl));
+    return { date: toDate(r.date, ord), riskRaw: txt(r.risk), risk: ccRisk(r.risk), ctype: ccType(r.risk), shift: /night/i.test(txt(r.risk)) ? "Night" : /\bday\b/i.test(txt(r.risk)) ? "Day" : "",
+      contractor: title(r.contractor), project: txt(r.project), asked, yes, no, closed: cl, notClosed: ncl, nc, comp: yes + nc ? yes / (yes + nc) : null,
+      odd: yes + no > asked || cl + ncl > Math.max(no, asked - yes) }; });
+}
 // Risk rating: a score (5x5 matrix: 15+ High, 5-12 Medium, 1-4 Low) or words such as High / Medium / Low
 const CRA_HIGH = 15, CRA_MED = 5;
 function riskLevel(v) {
@@ -442,10 +470,11 @@ const DATE_KEYS = ["issue", "closure", "respReq", "date", "due", "approved", "re
    State
    ===================================================================== */
 const S = { data: emptyData(), meta: {}, from: null, to: null, demo: false };
-function emptyData() { return { NCR: [], SOR: [], SWN: [], INC: [], ACX: [], CRA: [] }; }
+function emptyData() { return { NCR: [], SOR: [], SWN: [], INC: [], ACX: [], CRA: [], CC: [] }; }
 const UI = { NCR: { q: "", cat: "", who: "", sev: "", st: "open", sort: ["age", -1] }, SOR: { q: "", cat: "", who: "", sev: "", st: "open", sort: ["age", -1] },
   SWN: { q: "", theme: "", st: "", sort: ["issue", -1] }, INC: { q: "", grp: "", cat: "", st: "", sort: ["date", -1] },
-  ACX: { q: "", f: {}, by: "", by2: "", tr: "", st: "open", sort: ["age", -1] }, CRA: { q: "", f: {}, by: "", by2: "", tr: "", st: "", sort: ["issue", -1] }, OPEN: { ds: "", bucket: "", sort: ["age", -1] } };
+  ACX: { q: "", f: {}, by: "", by2: "", tr: "", st: "open", sort: ["age", -1] }, CRA: { q: "", f: {}, by: "", by2: "", tr: "", st: "", sort: ["issue", -1] },
+  CC: { risk: "", ctype: "", contractor: "", shift: "", trendMode: "overall", trendType: "", barWin: "90", barType: "", ncType: "", heatType: "", logRisk: "", logType: "", logMonth: "", sort: ["date", -1] }, OPEN: { ds: "", bucket: "", sort: ["age", -1] } };
 
 function persist() {
   const plain = JSON.parse(JSON.stringify({ data: S.data, meta: S.meta, from: iso(S.from), to: iso(S.to), demo: S.demo }));
@@ -511,6 +540,7 @@ function iStats(rows, C) {
     mGroups: EVENT_GROUPS.map(grp => C.months.map(m => cnt(rows, r => r.group === grp && inR(r.date, m, eom(m))))) };
 }
 function analyze() {
+  S.data = Object.assign(emptyData(), S.data);
   const C = ctx();
   for (const k of ["NCR", "SOR", "SWN", "ACX"]) for (const r of S.data[k]) if (r.raisedByRaw != null) r.raisedBy = person(r.raisedByRaw);
   for (const r of S.data.INC) if (r.categoryRaw != null) r.category = canonCat(r.categoryRaw);
@@ -519,6 +549,7 @@ function analyze() {
   for (const k of ["NCR", "SOR", "SWN", "ACX"]) out[k] = fStats(S.data[k], C);
   out.INC = iStats(S.data.INC, C);
   out.CRA = cStats(S.data.CRA, C);
+  out.CC = ccStats(S.data.CC, C);
   out.checks = buildChecks(out);
   out.alerts = evalAlerts(out);
   return out;
@@ -547,6 +578,13 @@ function buildChecks(o) {
     add("warn", "Aconex: no readable raised date", acx.filter(r => !r.issue).map(refOf), "Check the raised / created date column in the export.");
     add("info", "Aconex: closed without a closed date", acx.filter(r => r.isClosed && !r.closure).map(refOf), "Days to close and monthly close-outs skip these issues.");
     add("info", "Aconex: open without a due date", acx.filter(r => r.isOpen && !r.due).map(refOf), "These cannot be counted as past due.");
+  }
+  const cc = S.data.CC;
+  if (cc.length) {
+    const lastD = new Date(Math.max(...cc.filter(r => r.date).map(r => +r.date))), forms = ((S.meta.CC || {}).forms || []).filter(x => !x.hidden && fromIso(x.date) > lastD);
+    add("warn", `Critical risk controls: assessment sheets dated after the last summary row (${fmtL(lastD)})`, forms.map(x => `${x.name} · ${fmtL(fromIso(x.date))}`), "Add these assessments to the summary sheet so they count in the trend.");
+    add("info", "Critical risk controls: rows where the counts do not add up", cc.filter(r => r.odd).map(r => `${fmt(r.date)} · ${r.riskRaw} · asked ${r.asked}, yes ${r.yes}, no ${r.no}, closed ${r.closed}, not closed ${r.notClosed}`), "Non-compliant is taken as the larger of No and Closed + Not closed, capped at questions minus Yes. Check these rows in the summary sheet.");
+    add("warn", "Critical risk controls: no readable date", cc.filter(r => !r.date).map(r => r.riskRaw), "These rows are left out of the trend.");
   }
   const cra = S.data.CRA;
   if (cra.length) {
@@ -728,7 +766,7 @@ const VIEWS = [["overview", "Overview"], ["alerts", "Alerts"], ["ncr", "NCR"], [
 function route() { const h = location.hash.slice(1); return VIEWS.some(v => v[0] === h) ? h : "overview"; }
 function renderTabs() {
   const cur = route(), nChecks = A.checks.filter(c => c.sev === "warn" && c.items.length).length;
-  const count = { ncr: A.NCR.open, sor: A.SOR.open, "stop-work": A.SWN.open, aconex: S.data.ACX.length ? A.ACX.open : null, cra: S.data.CRA.length ? A.CRA.open : null, "open-items": A.NCR.open + A.SOR.open + A.ACX.open, checks: nChecks, alerts: A.alerts.length || null };
+  const count = { ncr: A.NCR.open, sor: A.SOR.open, "stop-work": A.SWN.open, aconex: S.data.ACX.length ? A.ACX.open : null, cra: S.data.CRA.length && !S.data.CC.length ? A.CRA.open : null, "open-items": A.NCR.open + A.SOR.open + A.ACX.open, checks: nChecks, alerts: A.alerts.length || null };
   const aRed = A.alerts.some(a => a.level === "red");
   $("#tabs").innerHTML = VIEWS.map(([id, l]) => `<a href="#${id}" ${id === cur ? 'aria-current="page"' : ""}>${l}${count[id] != null && (id !== "checks" || nChecks) ? `<span class="cnt${id === "checks" || (id === "alerts" && aRed) ? " alert" : id === "alerts" ? " warn" : ""}">${count[id]}</span>` : ""}</a>`).join("");
 }
@@ -785,6 +823,7 @@ function vOverview() {
     ${tile("Open NCRs", N.open, `${N.over30} open over 30 days · ${N.major} Major`, N.over30 ? "crit" : "good", "ncr")}
     ${tile("Open SORs", R.open, `${R.over30} open over 30 days`, R.over30 ? "crit" : "good", "sor")}
     ${hasX ? tile("Open Aconex issues", X.open, `${X.overdue} past due date`, X.overdue ? "crit" : "good", "aconex") : ""}
+    ${S.data.CC.length ? tile("Critical risk control compliance", ccPct(A.CC.compPer ?? A.CC.comp90), `${A.CC.compPer != null ? `${A.CC.per} assessments this period` : "Last 90 days (none this period)"} · ${A.CC.notClosed} non-compliances not closed`, (A.CC.compPer ?? A.CC.comp90) == null ? "" : (A.CC.compPer ?? A.CC.comp90) >= CC_GOOD ? "good" : (A.CC.compPer ?? A.CC.comp90) >= CC_FAIR ? "warn" : "crit", "cra") : ""}
     ${S.data.CRA.length ? tile("Critical risk assessments", `${A.CRA.approvedN}<small>/ ${A.CRA.total} approved</small>`, `${A.CRA.review} under review · ${A.CRA.rejected} rejected · ${A.CRA.reviewDue} review date passed`, A.CRA.rejected || A.CRA.reviewDue ? "crit" : A.CRA.review ? "warn" : "good", "cra") : ""}
     ${tile("NCR close-out rate", P(N.closeRate), `Closed ÷ issued, excluding terminated · SOR ${P(R.closeRate)}`, N.closeRate >= .85 ? "good" : "warn")}
     ${tile("Contractor 1st response on time", P(N.onTime), `NCRs answered within 7 days · SOR ${P(R.onTime)}`, N.onTime >= .8 ? "good" : N.onTime >= .5 ? "warn" : "crit")}
@@ -1085,6 +1124,93 @@ function afterCRA() { if (!S.data.CRA.length) return; const { scope } = A.view, 
   if (st.by2) draw("rc4", p => CFG.topBy(p, explode("CRA", scope.filter(r => r.isOpen), st.by2), "__k", (e, els, ch) => { if (els.length) { st.f[st.by2] = ch.data.labels[els[0].index]; render(); } }, 8, "Needing action"));
   wireTrend("CRA", scope); wireGenFilters("CRA"); wireBy("CRA", "by"); wireBy("CRA", "by2"); wireList("CRA", "t-CRA"); wireRead("CRA"); }
 
+/* ---------- Critical risk controls (assessment summary: one row per assessment) ---------- */
+const CC_GOOD = 0.9, CC_FAIR = 0.75;   // compliance colour bands: green from 90%, amber from 75%
+const ccPct = v => v == null ? "—" : Math.round(v * 100) + "%";
+const ccCls = v => v == null ? "" : v >= CC_GOOD ? "hc-g" : v >= CC_FAIR ? "hc-a" : "hc-r";
+const ccSum = (L, f) => L.reduce((s, r) => s + (r[f] || 0), 0);
+const ccComp = L => { const y = ccSum(L, "yes"), n = ccSum(L, "nc"); return y + n ? y / (y + n) : null; };
+function ccStats(rows, C) {
+  const per = rows.filter(r => inR(r.date, C.perStart, C.rpt)), prev = rows.filter(r => inR(r.date, C.prevStart, C.prevEnd)), d90 = rows.filter(r => inR(r.date, addD(C.rpt, -89), C.rpt));
+  const byM = C.months.map(m => rows.filter(r => inR(r.date, m, eom(m))));
+  const last = {}; for (const r of rows) if (r.date && (!last[r.risk] || r.date > last[r.risk])) last[r.risk] = r.date;
+  const byRisk90 = [...countBy(d90, r => r.risk).keys()].map(k => [k, ccComp(d90.filter(r => r.risk === k))]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1]);
+  return { rows, total: rows.length, per: per.length, prev: prev.length, compPer: ccComp(per), compPrev: ccComp(prev), comp90: ccComp(d90), compAll: ccComp(rows),
+    ncPer: ccSum(per, "nc"), ncPrev: ccSum(prev, "nc"), notClosed: ccSum(rows, "notClosed"), mComp: byM.map(ccComp), mCount: byM.map(L => L.length), lowest: byRisk90[0] || null,
+    stale: Object.entries(last).filter(([, d]) => days(C.rpt, d) > 60).sort((a, b) => a[1] - b[1]) };
+}
+const pctAxis = (o, axis = "y") => { o.scales[axis] = Object.assign(o.scales[axis], { min: 0, max: 1, ticks: Object.assign({}, o.scales[axis].ticks, { callback: v => Math.round(v * 100) + "%", stepSize: .2 }) });
+  o.plugins.tooltip.callbacks = { label: c => `${c.dataset.label}: ${c.raw == null ? "no assessment" : Math.round((axis === "x" ? c.raw : c.raw) * 100) + "%"}` }; return o; };
+CFG.ccTrend = (p, rows, mode) => {
+  const series = mode === "type" ? ["System controls", "Field controls"].map(t => [t, rows.filter(r => r.ctype === t || r.ctype === "System & Field")])
+    : mode === "risk" ? topKeys(rows.filter(r => r.date >= A.months[0]), "risk", 5).map(k => [k, rows.filter(r => r.risk === k)]) : [["All critical risks", rows]];
+  const o = opts(p, { legend: series.length > 1 });
+  return { type: "line", data: { labels: A.mLabels, datasets: series.map(([l, L], i) => ({ label: l, data: A.months.map(m => ccComp(L.filter(r => inR(r.date, m, eom(m))))), borderColor: p.s[i], backgroundColor: p.s[i], borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: 0, spanGaps: true })) }, options: pctAxis(o) };
+};
+CFG.ccByRisk = (p, rows, onClick) => { const keys = [...countBy(rows, r => r.risk).keys()].map(k => [k, ccComp(rows.filter(r => r.risk === k)), rows.filter(r => r.risk === k).length]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1]);
+  const o = opts(p, { horizontal: true, legend: false, onClick }); pctAxis(o, "x"); o.plugins.tooltip.callbacks = { label: c => `${Math.round(c.raw * 100)}% compliant · ${keys[c.dataIndex][2]} assessment${keys[c.dataIndex][2] > 1 ? "s" : ""}` };
+  return { type: "bar", data: { labels: keys.map(k => k[0]), datasets: [bar("Compliance", keys.map(k => k[1]), keys.map(k => k[1] >= CC_GOOD ? p.s[2] : k[1] >= CC_FAIR ? p.s[3] : p.crit))] }, options: o }; };
+CFG.ccNc = (p, rows) => { const inW = rows.filter(r => r.date && r.date >= A.months[0] && r.date <= A.rpt), keys = topKeys(inW.filter(r => r.nc), "risk", 5);
+  const ds = keys.map((k, i) => stackBar(k, A.months.map(m => ccSum(inW.filter(r => r.risk === k && inR(r.date, m, eom(m))), "nc")), p.s[i], p));
+  const oth = A.months.map(m => ccSum(inW.filter(r => !keys.includes(r.risk) && inR(r.date, m, eom(m))), "nc")); if (oth.some(Boolean)) ds.push(stackBar("Other", oth, p.closed, p));
+  return { type: "bar", data: { labels: A.mLabels, datasets: ds }, options: opts(p, { stacked: true }) }; };
+
+function vCRC() {
+  const st = UI.CC, all = A.CC.rows;
+  const pageF = [["risk", "Critical risk"], ["ctype", "Control type"], ["contractor", "Contractor"], ["shift", "Shift"]].filter(([f]) => uniq(all, f).length > 1);
+  const scope = all.filter(r => pageF.every(([f]) => !st[f] || r[f] === st[f])); A.view = { scope };
+  const D = ccStats(scope, A.C), active = pageF.filter(([f]) => st[f]).map(([f, l]) => `${l}: ${st[f]}`);
+  const typ = (id, cur) => sel(id, "Control type", cur, ["System controls", "Field controls"]);
+  const typF = (L, t) => !t ? L : L.filter(r => r.ctype === t || r.ctype === "System & Field");
+  const winOpts = [["per", "This period"], ["90", "Last 90 days"], ["13", "Last 13 months"], ["all", "All assessments"]];
+  const winF = (L, w) => w === "per" ? L.filter(r => inR(r.date, A.perStart, A.rpt)) : w === "90" ? L.filter(r => inR(r.date, addD(A.rpt, -89), A.rpt)) : w === "13" ? L.filter(r => r.date && r.date >= A.months[0]) : L;
+  // heat table
+  const heatRows = typF(scope, st.heatType), risks = [...countBy(heatRows, r => r.risk).keys()].sort();
+  const heat = `<div class="tablebox"><table class="heat"><thead><tr><th>Critical risk</th>${A.mLabels.map(l => `<th>${l}</th>`).join("")}<th>13 months</th></tr></thead><tbody>${risks.map(k => { const L = heatRows.filter(r => r.risk === k);
+      return `<tr><td>${esc(k)}</td>${A.months.map(m => { const M = L.filter(r => inR(r.date, m, eom(m))), v = ccComp(M); return `<td class="hcell ${ccCls(v)}" title="${M.length} assessment${M.length === 1 ? "" : "s"}">${v == null ? "" : ccPct(v)}</td>`; }).join("")}<td class="hcell ${ccCls(ccComp(L.filter(r => r.date >= A.months[0])))}"><b>${ccPct(ccComp(L.filter(r => r.date >= A.months[0])))}</b></td></tr>`; }).join("")}</tbody></table></div>`;
+  // log
+  const logRows = scope.filter(r => (!st.logRisk || r.risk === st.logRisk) && (!st.logType || r.ctype === st.logType || r.ctype === "System & Field") && (!st.logMonth || (r.date && iso(new Date(r.date.getFullYear(), r.date.getMonth(), 1)) === st.logMonth)));
+  const monthsPresent = [...new Set(scope.filter(r => r.date).map(r => iso(new Date(r.date.getFullYear(), r.date.getMonth(), 1))))].sort().reverse().map(m => [m, MON[+m.slice(5, 7) - 1] + " " + m.slice(0, 4)]);
+  const cols = [{ k: "date", l: "Date", cls: "d", h: dH("date") }, { k: "risk", l: "Critical risk" }, { k: "ctype", l: "Control type" }, ...(uniq(all, "shift").length ? [{ k: "shift", l: "Shift" }] : []),
+    { k: "contractor", l: "Contractor" }, { k: "asked", l: "Questions", cls: "n" }, { k: "yes", l: "Yes", cls: "n" }, { k: "nc", l: "Non-compliant", cls: "n", h: r => r.nc ? `<b style="color:var(--crit)">${r.nc}</b>` : "0" },
+    { k: "closed", l: "Closed at time", cls: "n" }, { k: "notClosed", l: "Not closed", cls: "n", h: r => r.notClosed ? `<span class="pill p-crit">${r.notClosed}</span>` : "0" },
+    { k: "comp", l: "Compliance", cls: "n", h: r => `<span class="hcell ${ccCls(r.comp)}" style="padding:2px 8px;border-radius:10px">${ccPct(r.comp)}</span>` }];
+  const toggle = S.data.CRA.length ? `<div class="filters"><span class="fsum">View:</span><button class="btn primary" type="button" data-ccview="controls">Control assessments</button><button class="btn" type="button" data-ccview="register">CRA register</button></div>` : "";
+  return `${header()}${toggle}
+  <section class="fbar${active.length ? " on" : ""}"><div class="filters"><span class="flab">Page filter</span>${pageF.map(([f, l]) => sel(`cc-${f}`, l, st[f], uniq(all, f))).join("")}${active.length ? `<button class="btn" type="button" id="cc-clear">Clear filters</button>` : ""}</div>
+    <div class="fsum">${active.length ? `Showing <b>${scope.length}</b> of ${all.length} assessments · ${active.map(esc).join(" · ")}. Applies to every section below.` : `Showing all ${all.length} assessments from “${esc((S.meta.CC || {}).sheet || "")}”. These filters apply to the whole page; each section also has its own filter.`}</div></section>
+  <section><div class="tiles">
+    ${tile("Assessments in period", D.per, delta(D.per, D.prev), "info")}
+    ${tile("Compliance in period", ccPct(D.compPer), D.compPrev == null ? "No assessments in the previous period" : `Previous ${A.per} days: ${ccPct(D.compPrev)}`, D.compPer == null ? "" : D.compPer >= CC_GOOD ? "good" : D.compPer >= CC_FAIR ? "warn" : "crit")}
+    ${tile("Compliance, last 90 days", ccPct(D.comp90), `All assessments: ${ccPct(D.compAll)}`, D.comp90 == null ? "" : D.comp90 >= CC_GOOD ? "good" : D.comp90 >= CC_FAIR ? "warn" : "crit")}
+    ${tile("Non-compliances found", D.ncPer, delta(D.ncPer, D.ncPrev), D.ncPer ? "warn" : "good")}
+    ${tile("Not closed at assessment", D.notClosed, "Non-compliances left open on the day (all assessments)", D.notClosed ? "crit" : "good")}
+    ${tile("Lowest compliance (90 days)", D.lowest ? ccPct(D.lowest[1]) : "—", D.lowest ? esc(D.lowest[0]) : "No assessments in the last 90 days", D.lowest ? (D.lowest[1] >= CC_GOOD ? "good" : D.lowest[1] >= CC_FAIR ? "warn" : "crit") : "")}
+    ${tile("Not assessed in 60 days", D.stale.length, D.stale.length ? D.stale.slice(0, 3).map(([k, d]) => `${esc(k)} (${fmt(d, {})})`).join(", ") + (D.stale.length > 3 ? "…" : "") : "Every critical risk assessed recently", D.stale.length ? "warn" : "good")}
+  </div></section>
+  <section class="card"><div class="shead"><div><h3>Compliance trend</h3><p class="sub">Yes ÷ (Yes + non-compliant) per month, last 13 months</p></div>
+    <div class="filters">${sel("cc-trendMode", "Show", st.trendMode, [["overall", "All critical risks"], ["type", "System vs field controls"], ["risk", "Top 5 critical risks"]]).replace('<option value="">All</option>', "")}${typ("cc-trendType", st.trendType)}</div></div>
+    <div class="cv tall"><canvas id="cc1" role="img" aria-label="Compliance trend"></canvas></div></section>
+  <section><div class="grid2">
+    <div class="card"><div class="shead"><div><h3>Compliance by critical risk</h3><p class="sub">Lowest first · click a bar to filter the page</p></div><div class="filters">${sel("cc-barWin", "Window", st.barWin, winOpts).replace('<option value="">All</option>', "")}${typ("cc-barType", st.barType)}</div></div><div class="cv tall"><canvas id="cc2" role="img" aria-label="Compliance by critical risk"></canvas></div></div>
+    <div class="card"><div class="shead"><div><h3>Non-compliances found per month</h3><p class="sub">By critical risk, top 5 shown</p></div><div class="filters">${typ("cc-ncType", st.ncType)}</div></div><div class="cv tall"><canvas id="cc3" role="img" aria-label="Non-compliances per month"></canvas></div></div>
+  </div></section>
+  <section class="card"><div class="shead"><div><h3>Compliance by critical risk and month</h3><p class="sub">Green ${Math.round(CC_GOOD * 100)}% and above · amber ${Math.round(CC_FAIR * 100)}–${Math.round(CC_GOOD * 100) - 1}% · red below ${Math.round(CC_FAIR * 100)}% · blank = not assessed that month</p></div><div class="filters">${typ("cc-heatType", st.heatType)}</div></div>${heat}</section>
+  <section><div class="filters" style="margin-bottom:10px"><h2 style="margin:0 auto 0 0">Assessment log</h2>${sel("cc-logRisk", "Critical risk", st.logRisk, uniq(scope, "risk"))}${typ("cc-logType", st.logType)}${sel("cc-logMonth", "Month", st.logMonth, monthsPresent)}</div>
+  ${table("t-CC", cols, logRows, st)}</section>`;
+}
+function afterCRC() {
+  const st = UI.CC, scope = A.view.scope, typF = (L, t) => !t ? L : L.filter(r => r.ctype === t || r.ctype === "System & Field");
+  const winF = (L, w) => w === "per" ? L.filter(r => inR(r.date, A.perStart, A.rpt)) : w === "90" ? L.filter(r => inR(r.date, addD(A.rpt, -89), A.rpt)) : w === "13" ? L.filter(r => r.date && r.date >= A.months[0]) : L;
+  draw("cc1", p => CFG.ccTrend(p, typF(scope, st.trendType), st.trendMode || "overall"));
+  draw("cc2", p => CFG.ccByRisk(p, winF(typF(scope, st.barType), st.barWin || "90"), (e, els, ch) => { if (els.length) { st.risk = ch.data.labels[els[0].index]; render(); } }));
+  draw("cc3", p => CFG.ccNc(p, typF(scope, st.ncType)));
+  for (const f of ["risk", "ctype", "contractor", "shift", "trendMode", "trendType", "barWin", "barType", "ncType", "heatType", "logRisk", "logType", "logMonth"]) { const el = document.getElementById(`cc-${f}`); if (el) el.addEventListener("change", () => { st[f] = el.value; render(); }); }
+  const c = document.getElementById("cc-clear"); if (c) c.addEventListener("click", () => { for (const f of ["risk", "ctype", "contractor", "shift"]) st[f] = ""; render(); });
+  wireSort("t-CC", st);
+  document.querySelectorAll("[data-ccview]").forEach(b => b.addEventListener("click", () => { UI.craView = b.dataset.ccview; render(); }));
+}
+
 /* ---------- open items ---------- */
 function openRows() { return [...A.NCR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "NCR" }, r)), ...A.SOR.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "SOR" }, r)),
   ...A.ACX.rows.filter(r => r.isOpen).map(r => Object.assign({ ds: "Aconex" }, r, { desc: r.title || r.desc })),
@@ -1149,7 +1275,7 @@ function render(keepFocus) {
   A = analyze(); destroyAll(); renderTabs();
   const v = route(), view = $("#view");
   const map = { overview: [vOverview, afterOverview], alerts: [vAlerts, () => wireAlertGo($("#view"))], ncr: [() => vRegister("NCR"), () => afterRegister("NCR")], sor: [() => vRegister("SOR"), () => afterRegister("SOR")],
-    "stop-work": [vSWN, afterSWN], incidents: [vINC, afterINC], aconex: [vACX, afterACX], cra: [vCRA, afterCRA], "open-items": [vOpen, afterOpen], checks: [vChecks, () => {}], history: [vHistory, afterHistory], settings: [() => vSettings() + vRules(), () => { afterSettings(); wireRules(); }] };
+    "stop-work": [vSWN, afterSWN], incidents: [vINC, afterINC], aconex: [vACX, afterACX], cra: S.data.CC.length && UI.craView !== "register" ? [vCRC, afterCRC] : [() => (S.data.CC.length ? `<div class="filters" style="margin-bottom:-8px"><span class="fsum">View:</span><button class="btn" type="button" data-ccview="controls">Control assessments</button><button class="btn primary" type="button" data-ccview="register">CRA register</button></div>` : "") + vCRA(), () => { afterCRA(); document.querySelectorAll("[data-ccview]").forEach(b => b.addEventListener("click", () => { UI.craView = b.dataset.ccview; render(); })); }], "open-items": [vOpen, afterOpen], checks: [vChecks, () => {}], history: [vHistory, afterHistory], settings: [() => vSettings() + vRules(), () => { afterSettings(); wireRules(); }] };
   const [html, after] = map[v]; view.innerHTML = html(); after();
   view.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { const g = b.dataset.go; if (g === "ncr" || g === "sor") UI[g.toUpperCase()].st = "open"; location.hash = g; }));
   view.querySelectorAll("[data-setto]").forEach(b => b.addEventListener("click", () => { const d = fromIso(b.dataset.setto), span = days(A.rpt, A.perStart); S.to = d; S.from = addD(d, -span); persist(); render(); }));
@@ -1179,8 +1305,8 @@ async function loadFiles(files) {
   if (S.demo) leaveDemo();
   let hd = null;
   for (const k in merged) { const m = merged[k];
-    S.data[k] = k === "INC" ? cleanINC(m.rows) : k === "SWN" ? cleanSWN(m.rows) : k === "ACX" ? cleanACX(m.rows) : k === "CRA" ? cleanCRA(m.rows) : cleanFindings(m.rows, k);
-    S.meta[k] = { file: m.file, sheet: m.sheet, hr: m.hr, cols: m.cols, headers: m.headers, headerDate: m.headerDate || null, missing: m.missing.filter(f => f !== "remarks" && !(DATASETS[k].optional || []).includes(f)), loaded: new Date().toISOString() };
+    S.data[k] = k === "CC" ? cleanCC(m.rows) : k === "INC" ? cleanINC(m.rows) : k === "SWN" ? cleanSWN(m.rows) : k === "ACX" ? cleanACX(m.rows) : k === "CRA" ? cleanCRA(m.rows) : cleanFindings(m.rows, k);
+    S.meta[k] = { file: m.file, sheet: m.sheet, hr: m.hr, cols: m.cols, headers: m.headers, forms: m.forms, headerDate: m.headerDate || null, missing: m.missing.filter(f => f !== "remarks" && !(DATASETS[k].optional || []).includes(f)), loaded: new Date().toISOString() };
     if (!hd && m.headerDate && ["NCR", "SOR", "SWN"].includes(k)) hd = m.headerDate;
     const dateF = k === "ACX" || k === "CRA" ? "issue" : null, undated = dateF && m.cols[dateF] ? S.data[k].filter(r => !r[dateF]).length : 0;
     notes.unshift(`${DATASETS[k].label}: ${S.data[k].length} rows from "${m.sheet}"${undated ? ` · ${undated} dates not read` : ""}${S.meta[k].missing.length ? ` (missing: ${S.meta[k].missing.join(", ")})` : ""}`);
@@ -1324,6 +1450,9 @@ async function exportExcel() {
     r0 += 7;
     if (hasX) { tiles(r0, [["Aconex issues raised", X.issuedPer, `In period · previous ${X.issuedPrev}`, BLU], ["Open Aconex issues", X.open, `of ${X.total} raised to date`, X.open ? AMB : GRN],
       ["Past due date", X.overdue, "Open with due date passed", X.overdue ? RED : GRN], ["Aconex close-out rate", P(X.closeRate), `Avg ${Math.round(X.avgClose)} days to close`, X.closeRate >= .85 ? GRN : AMB]]); r0 += 4; }
+    const Q = A.CC, hasQ = S.data.CC.length > 0;
+    if (hasQ) { tiles(r0, [["Critical risk assessments", Q.per, `In period · previous ${Q.prev}`, BLU], ["Control compliance", ccPct(Q.compPer), `Previous period ${ccPct(Q.compPrev)} · 90 days ${ccPct(Q.comp90)}`, Q.compPer == null ? NAVY : Q.compPer >= CC_GOOD ? GRN : Q.compPer >= CC_FAIR ? AMB : RED],
+      ["Non-compliances found", Q.ncPer, `Previous period ${Q.ncPrev}`, Q.ncPer ? AMB : GRN], ["Lowest compliance (90 days)", Q.lowest ? ccPct(Q.lowest[1]) : "—", Q.lowest ? Q.lowest[0] : "", Q.lowest && Q.lowest[1] < CC_FAIR ? RED : AMB]]); r0 += 4; }
     const K = A.CRA, hasC = S.data.CRA.length > 0;
     if (hasC) { tiles(r0, [["CRAs approved", `${K.approvedN} / ${K.total}`, `${K.issuedPer} submitted in period`, K.approvedN === K.total ? GRN : NAVY], ["CRAs under review", K.review, `Avg ${Math.round(K.avgPending)} days pending`, K.review ? AMB : GRN],
       ["CRAs rejected", K.rejected, "Resubmission needed", K.rejected ? RED : GRN], ["CRA review date passed", K.reviewDue, `${K.high} with high residual risk`, K.reviewDue ? RED : GRN]]); r0 += 4; }
@@ -1333,6 +1462,7 @@ async function exportExcel() {
       [p => CFG.events(p, I), "Incident log events per month"], [p => CFG.topBy(p, I.rows, "category", null, 8, "Events"), "Most frequent event categories"],
       [p => CFG.split(p, N.rows, "category"), "NCRs by category"], [p => CFG.swnThemes(p, W.rows), "Stop work notices by theme"],
       ...(hasX ? [[p => CFG.monthly(p, X, ["Raised", "Closed"]), "Aconex issues raised and closed per month"], [p => CFG.topBy(p, X.rows.filter(r => r.isOpen), "assignedOrg", null, 8, "Open issues"), "Open Aconex issues by assigned organisation"]] : [])];
+    if (hasQ) imgs.push([p => CFG.ccTrend(p, Q.rows, "type"), "Critical risk control compliance per month"], [p => CFG.ccByRisk(p, Q.rows.filter(r => inR(r.date, addD(A.rpt, -89), A.rpt))), "Compliance by critical risk, last 90 days"]);
     if (hasC) imgs.push([p => CFG.stack(p, K.rows, "risk", r => r.group, CRA_GROUPS.slice(0, 4).map(g => g[0])), "Critical risk assessments by status"]);
     const top = r0 + 1;
     imgs.forEach(([make, h], i) => { const id = wb.addImage({ base64: png(make, h), extension: "png" }); const r = top + Math.floor(i / 2) * 15;
@@ -1358,6 +1488,9 @@ async function exportExcel() {
     if (hasX) sheet("Aconex Issues", [["Issue", r => r.ref, 18], ["Title", r => r.title || r.desc, 50, 1], ["Type", r => r.type, 16], ["Status", r => r.status, 12], ["Priority", r => r.priority, 10],
       ["Assigned organisation", r => r.assignedOrg, 22], ["Assigned to", r => r.assignedTo, 18], ["Location", r => r.location, 16], ["Raised", r => r.issue, 11], ["Due", r => r.due, 11],
       ["Past due", r => r.overdue ? "Yes" : "", 8], ["Days open", r => r.age, 9], ["Closed", r => r.closure, 11], ["Raised by", r => r.raisedBy, 14]], [...X.rows].sort((a, b) => (b.issue || 0) - (a.issue || 0)));
+    if (hasQ) sheet("Critical Risk Controls", [["Date", r => r.date, 11], ["Critical risk", r => r.risk, 20], ["As written", r => r.riskRaw, 26], ["Control type", r => r.ctype, 15], ["Shift", r => r.shift, 8], ["Contractor", r => r.contractor, 18],
+      ["Questions asked", r => r.asked, 10], ["Yes", r => r.yes, 7], ["No", r => r.no, 7], ["Non-compliant", r => r.nc, 11], ["Closed at time", r => r.closed, 10], ["Not closed", r => r.notClosed, 9], ["Compliance %", r => r.comp == null ? "" : Math.round(r.comp * 100), 11]],
+      [...Q.rows].sort((a, b) => (b.date || 0) - (a.date || 0)));
     if (hasC) sheet("Critical Risk", [["Reference", r => r.ref, 20], ["Activity", r => r.title || r.hazard, 48, 1], ["Critical risk", r => r.risk, 20], ["Contractor", r => r.contractor, 18], ["Status", r => r.group, 13], ["Status (as written)", r => r.status, 16],
       ["Initial risk", r => r.initRaw || r.initLevel, 10], ["Residual risk", r => r.resRaw || r.resLevel, 10], ["Submitted", r => r.issue, 11], ["Approved", r => r.approved, 11], ["Review by", r => r.review, 11], ["Review passed", r => r.reviewDue ? "Yes" : "", 9], ["Days pending", r => r.age, 9]],
       [...K.rows].sort((a, b) => (b.issue || 0) - (a.issue || 0)));
