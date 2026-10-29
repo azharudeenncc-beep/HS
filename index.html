@@ -198,7 +198,7 @@ tbody tr:hover td{background:var(--surface-2)}
 </header>
 <div class="wrap"><main id="view"></main>
   <div class="foot">
-    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30b</span>
+    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30c</span>
     <button class="btn" id="clearBtn" type="button">Clear stored data</button>
   </div>
 </div>
@@ -954,6 +954,9 @@ function readPanel(k, rows, labels, dateF) {
 }
 function wireRead(k) { document.querySelectorAll(`[data-rematch="${k}"]`).forEach(b => b.addEventListener("click", () => { FORCE_MAP = k; $("#file").click(); })); }
 let FORCE_MAP = null;
+// Data imported by an older version has no copy of the file's columns, so filters, trends and date checks cannot work until the file is loaded again
+function staleNote(k, label) { const rows = S.data[k]; if (S.demo || !rows.length || rows.some(r => r._x && Object.keys(r._x).length)) return "";
+  return `<div class="banner" style="background:var(--crit-bg);border-color:var(--crit)"><span><b>This ${label} data was imported by an older version of the app</b> and is still saved in your browser. Load the ${label} file again to read the dates and build the filters and trends.</span><button class="btn primary" type="button" data-act="load">Load ${label} file</button></div>`; }
 function trendPick(k, cols) { if (!cols.includes(UI[k].tr)) { const m = S.meta[k] || {}; UI[k].tr = cols.find(h => /hazard/i.test(h)) || [m.cols && m.cols.category, m.cols && m.cols.risk, m.cols && m.cols.type].find(h => h && cols.includes(h)) || cols[0] || ""; } return UI[k].tr; }
 function trendSection(k, scope, cols, noun) {
   const h = trendPick(k, cols); if (!h) return "";
@@ -991,9 +994,9 @@ function vACX() {
     { k: "assignedOrg", l: "Assigned to", h: r => esc([r.assignedOrg, r.assignedTo].filter(Boolean).join(" · ")) },
     { k: "issue", l: "Raised", cls: "d", h: r => r.issue ? fmt(r.issue) : `<span class="pill p-crit">not read</span>` }, { k: "due", l: "Due", cls: "d", h: r => r.overdue ? `<span class="age a60">${fmt(r.due)}</span>` : fmt(r.due) },
     { k: "age", l: "Open for", cls: "n", h: ageH }, { k: "closure", l: "Closed", cls: "d", h: dH("closure") }];
-  return `${header()}${genFilterBar("ACX", cols, scope.length, all.length, "issues")}
+  return `${header()}${staleNote("ACX", "Aconex")}${genFilterBar("ACX", cols, scope.length, all.length, "issues")}
   ${afterTo("ACX", scope, "issues raised")}
-  ${dated < scope.length ? `<div class="banner"><span><b>${scope.length - dated} of ${scope.length} issues have no readable raised date</b>, so they are missing from "raised in period" and the monthly chart. Open “How this file was read” at the bottom to see the values.</span></div>` : ""}
+  ${dated < scope.length && !staleNote("ACX", "") ? `<div class="banner"><span><b>${scope.length - dated} of ${scope.length} issues have no readable raised date</b>, so they are missing from "raised in period" and the monthly chart. Open “How this file was read” at the bottom to see the values.</span></div>` : ""}
   <section><div class="tiles">
     ${tile("Raised in period", D.issuedPer, delta(D.issuedPer, D.issuedPrev), "info")}${tile("Closed in period", D.closedPer, `Previous ${A.per} days: ${D.closedPrev}`, "good")}
     ${tile("Open issues", D.open, `of ${D.total} raised to date`, D.open ? "warn" : "good")}${tile("Past due date", D.overdue, "Open with a due date before the period end", D.overdue ? "crit" : "good")}
@@ -1035,7 +1038,7 @@ function vCRA() {
     { k: "review", l: "Review by", cls: "d", h: r => r.reviewDue ? `<span class="age a60">${fmt(r.review)}</span>` : fmt(r.review) }, { k: "age", l: "Pending", cls: "n", h: ageH }];
   const showOpts = [["open", "Needs action (under review or rejected)"], ["Under review", "Under review"], ["Rejected", "Rejected"], ["Approved", "Approved"], ["reviewDue", "Review date passed"], ["high", "High residual risk"]];
   const pass = v => r => !v || (v === "open" ? r.isOpen : v === "reviewDue" ? r.reviewDue : v === "high" ? r.resLevel === "High" : r.group === v);
-  return `${header()}${genFilterBar("CRA", cols, scope.length, all.length, "assessments")}${afterTo("CRA", scope, "assessments submitted")}
+  return `${header()}${staleNote("CRA", "CRA register")}${genFilterBar("CRA", cols, scope.length, all.length, "assessments")}${afterTo("CRA", scope, "assessments submitted")}
   <section><div class="tiles">
     ${tile("Submitted in period", D.issuedPer, delta(D.issuedPer, D.issuedPrev), "info")}${tile("Approved in period", D.closedPer, `Previous ${A.per} days: ${D.closedPrev}`, "good")}
     ${tile("Approved", D.approvedN, `of ${D.total} assessments`, D.approvedN === D.total ? "good" : "")}
