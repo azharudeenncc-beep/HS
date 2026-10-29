@@ -60,7 +60,7 @@ button,input,select{font:inherit;color:inherit}
 .btn[disabled]{opacity:.5;cursor:default}
 .tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1 1 100%;min-width:0}
 .tabs::-webkit-scrollbar{display:none}
-.tabs a{padding:10px 12px 9px;color:var(--muted);text-decoration:none;font-weight:500;font-size:13px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a{flex:none;padding:10px 12px 9px;color:var(--muted);text-decoration:none;font-weight:500;font-size:13px;border-bottom:2px solid transparent;white-space:nowrap}
 .tabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
 .tabs a .cnt{font:500 11px var(--mono);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:0 6px;margin-left:5px}
 .tabs a .cnt.alert{background:var(--crit-bg);border-color:transparent;color:var(--crit)}
@@ -151,6 +151,26 @@ tbody tr:hover td{background:var(--surface-2)}
 .req{font-style:normal;font-weight:500;font-size:11px;color:var(--crit);margin-left:4px}
 .merr{margin:0;color:var(--crit);font-weight:600}
 .mact{display:flex;justify-content:flex-end;gap:8px}
+.tabs a .cnt.warn{background:var(--warn-bg);border-color:transparent;color:color-mix(in srgb,var(--warn) 55%,var(--ink))}
+.astrip{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--crit);border-radius:var(--r);padding:10px 14px;display:grid;gap:6px}
+.astrip .asum{font-size:13px} .astrip .asum a{color:var(--accent);margin-left:8px;font-weight:600}
+.astrip ul{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:13px}
+.alerts{display:grid;gap:10px}
+.alert{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:var(--r);padding:12px 16px;display:grid;gap:8px;min-width:0}
+.alert.lv-red{border-left-color:var(--crit)}
+.alert .ah{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.alert h3{margin:0;font:600 14.5px var(--body);flex:1 1 260px}
+.alert .ad{margin:0;color:var(--muted);font-size:12.5px}
+.steps{margin:0;padding-left:22px;display:grid;gap:3px;font-size:13px}
+.steps li::marker{font-weight:700;color:var(--accent)}
+.alert details{font-size:12.5px;color:var(--muted)} .alert summary{cursor:pointer;color:var(--accent)}
+.alert details ul{margin:6px 0 0;padding-left:18px;display:grid;gap:2px}
+.mbox .alert{padding:8px 12px} .mbox .alert h3{font-size:13.5px}
+.rule{border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px}
+.rtog{display:flex;align-items:center;gap:8px;font-size:14px}
+.rsent{font-size:13px;line-height:2.1;color:var(--ink)}
+.rsent input,.rsent select{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:3px 6px;font:13px var(--body);color:var(--ink)}
+.rule textarea{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;font:13px var(--body);color:var(--ink);width:100%;resize:vertical}
 .foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 .drop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(2px)}
 .drop div{border:2px dashed var(--accent);border-radius:12px;padding:40px 48px;background:var(--surface);text-align:center;font:700 20px var(--display);font-stretch:85%;max-width:calc(100% - 32px)}
@@ -258,16 +278,26 @@ const txt = v => v == null ? "" : String(v).replace(/ /g, " ").replace(/\s+/g, 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const title = s => txt(s).toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase());
 function mk(y, m, d) { if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31 && y > 1990 && y < 2100)) return null; const r = new Date(y, m - 1, d); return r.getMonth() === m - 1 ? r : null; }
-function toDate(v) {
+// Reads Excel serials, Date objects and text dates, with or without a time ("28/10/2026 10:22 AM", "2026-10-28T10:22", "Oct 28, 2026").
+// order: "dmy" (default) or "mdy" for slash dates where both parts are 12 or less.
+function toDate(v, order = "dmy") {
   if (v == null || v === "") return null;
   if (v instanceof Date) return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
   if (typeof v === "number") { if (v < 20000 || v > 80000) return null; const d = new Date(Math.round((v - 25569) * DAY)); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
-  const s = String(v).trim().toLowerCase().replace(/[\/.]/g, "-").replace(/\s+/g, "").replace(/-+/g, "-");
-  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return mk(+m[1], +m[2], +m[3]);
-  m = s.match(/^(\d{1,2})-([a-z]{3,9}|\d{1,2})-(\d{2,4})$/);
-  if (m) { const mo = /\d/.test(m[2]) ? +m[2] : MONTHS.indexOf(m[2].slice(0, 3)) + 1; let y = +m[3]; if (y < 100) y += 2000; return mk(y, mo, +m[1]); }
+  let s = String(v).trim().toLowerCase();
+  if (/^\d{5}(\.\d+)?$/.test(s)) return toDate(+s);
+  s = s.replace(/t\d{1,2}:\d{2}.*$/, "").replace(/[\s,]*\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*([ap]\.?\s?m\.?)?(\s*(z|[a-z]{2,5}|[+-]\d{2}:?\d{2}))?\s*$/, "").trim();
+  s = s.replace(/^(mon|tue|wed|thu|fri|sat|sun)[a-z]*[,\s]+/, "").replace(/(\d)(st|nd|rd|th)\b/g, "$1").replace(/[,\/.\s]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if (m) return mk(+m[1], +m[2], +m[3]);
+  const yr = y => { y = +y; return y < 100 ? y + 2000 : y; }, mon = t => MONTHS.indexOf(t.slice(0, 3)) + 1;
+  m = s.match(/^(\d{1,2})-([a-z]{3,9})-(\d{2,4})$/); if (m) return mk(yr(m[3]), mon(m[2]), +m[1]);
+  m = s.match(/^([a-z]{3,9})-(\d{1,2})-(\d{2,4})$/); if (m) return mk(yr(m[3]), mon(m[1]), +m[2]);
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+  if (m) { let a = +m[1], b = +m[2]; const mdy = a <= 12 && (b > 12 || (order === "mdy" && b <= 12)); return mdy ? mk(yr(m[3]), a, b) : mk(yr(m[3]), b, a); }
   return null;
 }
+// Looks at a whole column of text dates: if any value only makes sense month-first (e.g. 10/28/2026), read the column month-first.
+function dateOrder(vals) { let dmy = 0, mdy = 0; for (const v of vals) { if (typeof v !== "string") continue; const m = v.trim().match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-]\d{2,4}/); if (!m) continue; if (+m[1] > 12) dmy++; else if (+m[2] > 12) mdy++; } return mdy > dmy ? "mdy" : "dmy"; }
 const iso = d => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
 const fromIso = s => { if (!s) return null; const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -347,18 +377,20 @@ function cleanSWN(raw) {
     raisedBy: person(r.raisedBy), raisedByRaw: txt(r.raisedBy), status: txt(r.status).toUpperCase() || "(blank)", contractorRef: txt(r.contractorRef), theme: swnTheme(r.desc) }));
 }
 function cleanINC(raw) {
+  const ord = dateOrder(raw.map(r => r.date));
   return raw.map(r => {
     const type = txt(r.type), statusRaw = txt(r.status);
-    return { date: toDate(r.date), dateText: typeof r.date === "string" ? txt(r.date) : "", type, group: TYPE_GROUPS[type.toLowerCase()] || "Other", typeKnown: !!TYPE_GROUPS[type.toLowerCase()],
+    return { date: toDate(r.date, ord), dateText: typeof r.date === "string" ? txt(r.date) : "", type, group: TYPE_GROUPS[type.toLowerCase()] || "Other", typeKnown: !!TYPE_GROUPS[type.toLowerCase()],
       category: canonCat(r.category), categoryRaw: txt(r.category), desc: txt(r.desc), severity: txt(r.severity), hipo: /^y/i.test(txt(r.hipo)),
       injury: txt(r.injury), body: txt(r.body), lostDays: typeof r.lwd === "number" ? r.lwd : 0, contractor: txt(r.contractor),
       statusRaw, isOpen: statusRaw.toLowerCase() !== "closed", lessons: txt(r.lessons) };
   });
 }
 function cleanACX(raw) {
+  const ord = dateOrder(raw.flatMap(r => [r.issue, r.due, r.closure]));
   return raw.map(r => ({ ref: txt(r.ref), title: txt(r.title), desc: txt(r.desc), type: txt(r.type), status: title(r.status) || "(blank)", priority: title(r.priority),
     raisedBy: person(r.raisedBy), raisedByRaw: txt(r.raisedBy), assignedOrg: txt(r.assignedOrg), assignedTo: txt(r.assignedTo), location: txt(r.location),
-    issue: toDate(r.issue), due: toDate(r.due), closure: toDate(r.closure), remarks: txt(r.remarks) }));
+    issue: toDate(r.issue, ord), due: toDate(r.due, ord), closure: toDate(r.closure, ord), remarks: txt(r.remarks) }));
 }
 const DATE_KEYS = ["issue", "closure", "respReq", "date", "due"];
 
@@ -442,6 +474,7 @@ function analyze() {
   for (const k of ["NCR", "SOR", "SWN", "ACX"]) out[k] = fStats(S.data[k], C);
   out.INC = iStats(S.data.INC, C);
   out.checks = buildChecks(out);
+  out.alerts = evalAlerts(out);
   return out;
 }
 
@@ -471,6 +504,124 @@ function buildChecks(o) {
   }
   add("info", "NCR: severity not graded", (o.NCR?.rows || []).filter(r => r.severity === "Not graded").map(refOf), "Grade new NCRs so the Major count means something.");
   return C;
+}
+
+/* =====================================================================
+   Alert rules (thresholds are edited in Settings and kept in this browser)
+   ===================================================================== */
+const RULES_KEY = "hse-dash-rules";
+const DEFAULT_RULES = {
+  nmCluster: { on: true, count: 3, days: 30, level: "amber", actions: "Root-cause review\nToolbox talk on the topic\nCheck the risk assessment for that activity" },
+  nmSpike: { on: true, pct: 50, min: 2, level: "amber", actions: "Targeted site walk in the affected areas\nBrief supervisors on the findings" },
+  repeat: { on: true, count: 3, days: 30, basis: "topic", level: "red", actions: "Formal root-cause analysis with the contractor\nCorrective action plan with owners and dates\nVerify the fix on site" },
+  ageing: { on: true, amber: 30, red: 60, actions: "At the amber limit, escalate to the contractor's project manager\nAt the red limit, escalate to the client" },
+  response: { on: true, days: 7, level: "amber", actions: "Send a reminder letter\nRaise it at the weekly HSE meeting" },
+  hipo: { on: true, days: 30, level: "red", actions: "Start an investigation\nIssue a lessons-learned within the agreed timeframe\nCheck that the toolbox talk and actions are closed" },
+  swnRepeat: { on: true, count: 2, days: 0, level: "red", actions: "Senior management meeting with the contractor\nReview the RAMS and supervision for that activity" },
+};
+// Topic keywords used by the repeat-findings rule (description text of NCRs, SORs and Aconex issues)
+const TOPICS = [["Work at height", ["height", "edge protection", "guardrail", "harness", "fall arrest", "leading edge", "open edge", "wah"]], ["Scaffolding", ["scaffold"]],
+  ["Lifting operations", ["lift", "crane", "rigging", "hoist", "slinging"]], ["Excavation", ["excavat", "trench", "shoring"]], ["Fire safety", ["fire", "extinguisher", "hot work", "emergency"]],
+  ["Electrical", ["electric", "cable", "panel", "db box", "earthing"]], ["Housekeeping", ["housekeeping", "debris", "storage", "laydown", "waste"]],
+  ["Plant and traffic", ["plant", "vehicle", "traffic", "equipment", "excavator", "forklift", "banksman", "flagman"]], ["PPE", ["ppe", "helmet", "glove", "goggle", "ear plug", "hi-vis"]],
+  ["RAMS and permits", ["rams", "method statement", "permit", "jsa", "risk assessment"]], ["Access and egress", ["access", "egress", "ladder", "stair", "walkway"]],
+  ["Barricades and signage", ["barricad", "signage", "sign ", "hoarding", "fencing"]], ["Environment and dust", ["dust", "spill", "noise", "environment"]],
+  ["Welfare and health", ["welfare", "medical", "heat", "drinking water", "toilet"]], ["Formwork and concrete", ["formwork", "shuttering", "concrete", "rebar", "props"]]];
+const topicOf = t => { const s = " " + String(t || "").toLowerCase() + " "; for (const [n, w] of TOPICS) if (w.some(x => s.includes(x))) return n; return ""; };
+let RULES = loadRules();
+function loadRules() { const saved = load(RULES_KEY) || {}; const r = {}; for (const k in DEFAULT_RULES) r[k] = Object.assign({}, DEFAULT_RULES[k], saved[k] || {}); return r; }
+const steps = t => String(t || "").split(/\n/).map(x => x.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean);
+
+function evalAlerts(o) {
+  const out = [], R = RULES, rpt = o.rpt, since = d => addD(rpt, -(Math.max(1, +d) - 1));
+  const add = (rule, level, title, detail, items, go) => out.push({ rule, level, title, detail, items, go, actions: steps(rule === "ageing-amber" || rule === "ageing-red" ? R.ageing.actions : R[rule].actions) });
+  const findRef = r => `${r.ds || ""} ${r.ref} · ${(r.title || r.desc || "").slice(0, 90)}`.trim();
+  const inc = o.INC.rows, nm = inc.filter(r => r.group === "Near Miss");
+  if (R.nmCluster.on) { const from = since(R.nmCluster.days), recent = nm.filter(r => inR(r.date, from, rpt));
+    const hits = [...countBy(recent, r => r.category)].filter(x => x[1] >= +R.nmCluster.count).sort((a, b) => b[1] - a[1]);
+    if (hits.length) add("nmCluster", R.nmCluster.level, hits.length === 1 ? `${hits[0][1]} near misses in “${hits[0][0]}” in the last ${R.nmCluster.days} days` : `Near-miss clusters in ${hits.length} categories in the last ${R.nmCluster.days} days`,
+      `${hits.map(([k, n]) => `${k} (${n})`).join(", ")}. Threshold: ${R.nmCluster.count} or more in the same category.`,
+      hits.flatMap(([k]) => recent.filter(r => r.category === k).map(r => `${k} · ${fmt(r.date)} · ${r.desc.slice(0, 100)}`)), hits.length === 1 ? ["incidents", "INC", "cat", hits[0][0]] : ["incidents", "INC", "grp", "Near Miss"]); }
+  if (R.nmSpike.on) { const a = o.INC.nmPer, b = o.INC.nmPrev, rise = b ? (a - b) / b * 100 : (a ? Infinity : 0);
+    if (a >= +R.nmSpike.min && rise >= +R.nmSpike.pct)
+      add("nmSpike", R.nmSpike.level, `Near misses up ${b ? Math.round(rise) + "%" : "from zero"}: ${a} this period vs ${b} before`, `Threshold: at least ${R.nmSpike.pct}% higher than the previous ${o.per} days, with ${R.nmSpike.min} or more this period.`,
+        nm.filter(r => inR(r.date, o.perStart, rpt)).map(r => `${fmt(r.date)} · ${r.category} · ${r.desc.slice(0, 90)}`), ["incidents", "INC", "grp", "Near Miss"]); }
+  const finds = [...o.NCR.rows.map(r => Object.assign({ ds: "NCR" }, r)), ...o.SOR.rows.map(r => Object.assign({ ds: "SOR" }, r)), ...o.ACX.rows.map(r => Object.assign({ ds: "Aconex" }, r))];
+  if (R.repeat.on) { const from = since(R.repeat.days), recent = finds.filter(r => inR(r.issue, from, rpt));
+    const key = r => R.repeat.basis === "category" ? `${r.ds} ${r.category}` : topicOf(`${r.title || ""} ${r.desc || ""}`);
+    const hits = [...countBy(recent, key)].filter(x => x[0] && x[1] >= +R.repeat.count).sort((a, b) => b[1] - a[1]), unit = R.repeat.basis === "category" ? "categor" : "topic";
+    if (hits.length) add("repeat", R.repeat.level, hits.length === 1 ? `${hits[0][1]} findings on “${hits[0][0]}” in the last ${R.repeat.days} days` : `Repeat findings on ${hits.length} ${unit === "topic" ? "topics" : "categories"} in the last ${R.repeat.days} days`,
+      `${hits.map(([k, n]) => `${k} (${n})`).join(", ")}. NCRs, SORs and Aconex issues combined; threshold ${R.repeat.count} or more on the same ${unit === "topic" ? "topic" : "category"}.`,
+      hits.flatMap(([k]) => recent.filter(r => key(r) === k).map(r => `${k} · ${findRef(r)}`))); }
+  if (R.ageing.on) { const open = finds.filter(r => r.isOpen && r.age != null);
+    const red = open.filter(r => r.age > +R.ageing.red), amber = open.filter(r => r.age > +R.ageing.amber && r.age <= +R.ageing.red);
+    const split = l => ["NCR", "SOR", "Aconex"].map(d => [d, l.filter(r => r.ds === d).length]).filter(x => x[1]).map(x => `${x[1]} ${x[0]}`).join(", ");
+    if (red.length) add("ageing-red", "red", `${red.length} items open over ${R.ageing.red} days`, split(red), red.sort((a, b) => b.age - a.age).map(r => `${r.age} d · ${findRef(r)}`), ["open-items", "OPEN", "bucket", ""]);
+    if (amber.length) add("ageing-amber", "amber", `${amber.length} items open ${R.ageing.amber}–${R.ageing.red} days`, split(amber), amber.sort((a, b) => b.age - a.age).map(r => `${r.age} d · ${findRef(r)}`), ["open-items", "OPEN", "bucket", ""]); }
+  if (R.response.on) { const late = finds.filter(r => (r.ds !== "Aconex" && r.status === "OPEN" && r.age > +R.response.days) || (r.ds === "Aconex" && r.overdue));
+    if (late.length) add("response", R.response.level, `${late.length} items waiting on a contractor response`, `NCRs / SORs with no response after ${R.response.days} days, plus Aconex issues past their due date.`, late.sort((a, b) => (b.age || 0) - (a.age || 0)).map(r => `${r.age ?? "?"} d · ${findRef(r)}`)); }
+  if (R.hipo.on) { const from = since(R.hipo.days), ev = inc.filter(r => inR(r.date, from, rpt) && (r.hipo || r.group === "Recordable"));
+    if (ev.length) add("hipo", R.hipo.level, `${ev.length} high-potential or recordable event${ev.length > 1 ? "s" : ""} in the last ${R.hipo.days} days`, "Always raised as soon as it is logged.",
+      ev.map(r => `${fmt(r.date)} · ${r.hipo ? "High potential" : r.type} · ${r.desc.slice(0, 100)}`), ["incidents", "INC", "grp", ""]); }
+  if (R.swnRepeat.on) { const d = +R.swnRepeat.days, sw = o.SWN.rows.filter(r => !d || inR(r.issue, since(d), rpt));
+    const hits = [...countBy(sw, r => r.theme)].filter(x => x[1] >= +R.swnRepeat.count).sort((a, b) => b[1] - a[1]), when = d ? ` in the last ${d} days` : " to date";
+    if (hits.length) add("swnRepeat", R.swnRepeat.level, hits.length === 1 ? `${hits[0][1]} stop-work notices on “${hits[0][0]}”${when}` : `Repeat stop-work notices on ${hits.length} themes${when}`,
+      `${hits.map(([k, n]) => `${k} (${n})`).join(", ")}. Threshold: ${R.swnRepeat.count} or more on the same theme.`,
+      hits.flatMap(([k]) => sw.filter(r => r.theme === k).map(r => `${k} · ${fmt(r.issue)} · ${r.ref} · ${r.desc.slice(0, 80)}`)), hits.length === 1 ? ["stop-work", "SWN", "theme", hits[0][0]] : ["stop-work", "SWN", "theme", ""]); }
+  return out.sort((a, b) => (a.level === "red" ? 0 : 1) - (b.level === "red" ? 0 : 1));
+}
+
+function alertCard(a, i, compact) {
+  return `<article class="alert lv-${a.level}"><div class="ah"><span class="pill ${a.level === "red" ? "p-crit" : "p-warn"}">${a.level === "red" ? "Red" : "Amber"}</span><h3>${esc(a.title)}</h3>
+    ${a.go ? `<button class="btn" type="button" data-alert-go="${i}">Show items</button>` : ""}</div>
+    ${compact ? "" : `<p class="ad">${esc(a.detail)}</p>
+    <ol class="steps">${a.actions.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+    ${a.items.length ? `<details><summary>${a.items.length} item${a.items.length > 1 ? "s" : ""} behind this alert</summary><ul>${a.items.slice(0, 150).map(t => `<li>${esc(t)}</li>`).join("")}</ul></details>` : ""}`}</article>`;
+}
+function wireAlertGo(root = document) { root.querySelectorAll("[data-alert-go]").forEach(b => b.addEventListener("click", () => { const a = A.alerts[+b.dataset.alertGo]; if (!a || !a.go) return;
+  const [hash, k, key, v] = a.go; if (UI[k] && key) { UI[k][key] = v; if (k === "OPEN") UI.OPEN.ds = ""; } closeAlertPop(); location.hash = hash; if (location.hash === "#" + hash) render(); })); }
+function vAlerts() {
+  const L = A.alerts, red = L.filter(a => a.level === "red").length;
+  return `${header()}<section><h2>Alerts<small>${L.length ? `${red} red · ${L.length - red} amber, checked against ${fmtL(A.rpt)}` : "none triggered"}</small></h2>
+  ${L.length ? `<div class="alerts">${L.map((a, i) => alertCard(a, i)).join("")}</div>` : `<div class="empty">No alert rule is triggered for this period. Thresholds can be changed in Settings → Alert rules.</div>`}</section>`;
+}
+function openAlertPop() {
+  if (!A || !A.alerts.length) return; try { sessionStorage.setItem("hse-alerts-shown", "1"); } catch (e) {}
+  let el = $("#alertPop"); if (!el) { el = document.createElement("div"); el.id = "alertPop"; el.className = "mapper"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-labelledby", "apT"); document.body.appendChild(el); }
+  const L = A.alerts, red = L.filter(a => a.level === "red").length;
+  el.innerHTML = `<div class="mbox"><h3 id="apT">${L.length} alert${L.length > 1 ? "s" : ""} need attention</h3><p class="sub">${red} red, ${L.length - red} amber, for the period ${perTxt()}.</p>
+    <div class="alerts">${L.map((a, i) => alertCard(a, i, true)).join("")}</div>
+    <div class="mact"><button class="btn" type="button" id="apClose">Close</button><button class="btn primary" type="button" id="apAll">Open the Alerts tab</button></div></div>`;
+  el.hidden = false; wireAlertGo(el);
+  $("#apClose").addEventListener("click", closeAlertPop); $("#apAll").addEventListener("click", () => { closeAlertPop(); location.hash = "alerts"; });
+  $("#apAll").focus();
+}
+function closeAlertPop() { const el = $("#alertPop"); if (el) el.hidden = true; }
+
+function vRules() {
+  const R = RULES, n = (k, f, w = 64) => `<input type="number" min="0" id="r-${k}-${f}" value="${esc(R[k][f])}" style="width:${w}px" aria-label="${k} ${f}">`;
+  const lv = k => `<select id="r-${k}-level" aria-label="${k} level"><option value="amber" ${R[k].level === "amber" ? "selected" : ""}>Amber</option><option value="red" ${R[k].level === "red" ? "selected" : ""}>Red</option></select>`;
+  const row = (k, name, sentence, level = true) => `<div class="rule"><label class="rtog" for="r-${k}-on"><input type="checkbox" id="r-${k}-on" ${R[k].on ? "checked" : ""}> <b>${name}</b></label>
+    <div class="rsent">${sentence}${level ? ` · Level ${lv(k)}` : ""}</div>
+    <label class="fld" for="r-${k}-actions"><span>Actions (one per line)</span><textarea id="r-${k}-actions" rows="3">${esc(R[k].actions)}</textarea></label></div>`;
+  return `<section class="card set" id="rules"><h3>Alert rules</h3><p class="sub">Change any number and click Save. Alerts recalculate straight away. Saved in this browser only.</p>
+  ${row("nmCluster", "1. Near-miss cluster", `Alert when ${n("nmCluster", "count")} or more near misses fall in the same category within ${n("nmCluster", "days")} days`)}
+  ${row("nmSpike", "2. Near-miss spike", `Alert when near misses this period are at least ${n("nmSpike", "pct")}% higher than the previous period, and there are at least ${n("nmSpike", "min")} this period`)}
+  ${row("repeat", "3. Repeat findings", `Alert when ${n("repeat", "count")} or more NCRs, SORs or Aconex issues share the same <select id="r-repeat-basis" aria-label="Repeat basis"><option value="topic" ${R.repeat.basis !== "category" ? "selected" : ""}>topic (description keywords)</option><option value="category" ${R.repeat.basis === "category" ? "selected" : ""}>category code</option></select> within ${n("repeat", "days")} days`)}
+  ${row("ageing", "4. Ageing of open items", `Amber when an NCR, SOR or Aconex issue is open over ${n("ageing", "amber")} days; red over ${n("ageing", "red")} days`, false)}
+  ${row("response", "5. Overdue contractor response", `Alert when an NCR or SOR has no contractor response after ${n("response", "days")} days (also lists Aconex issues past their due date)`)}
+  ${row("hipo", "6. High-potential or recordable event", `Alert for any high-potential event or recordable injury in the last ${n("hipo", "days")} days`)}
+  ${row("swnRepeat", "7. Repeat stop-work notices", `Alert when ${n("swnRepeat", "count")} or more stop-work notices share the same theme within ${n("swnRepeat", "days")} days (0 = any time)`)}
+  <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn primary" type="button" id="saveRules">Save alert rules</button><button class="btn" type="button" id="resetRules">Restore default rules</button></div></section>`;
+}
+function wireRules() {
+  $("#saveRules").addEventListener("click", () => {
+    for (const k in RULES) for (const f in RULES[k]) { const el = document.getElementById(`r-${k}-${f}`); if (!el) continue;
+      RULES[k][f] = el.type === "checkbox" ? el.checked : el.type === "number" ? Math.max(0, +el.value || 0) : el.value; }
+    if (RULES.ageing.red <= RULES.ageing.amber) RULES.ageing.red = RULES.ageing.amber + 1;
+    store(RULES_KEY, RULES); render(); toast(`Alert rules saved. ${A.alerts.length} alert${A.alerts.length === 1 ? "" : "s"} now triggered.`);
+  });
+  $("#resetRules").addEventListener("click", () => { store(RULES_KEY); RULES = loadRules(); render(); toast("Default alert rules restored."); });
 }
 
 /* =====================================================================
@@ -514,12 +665,13 @@ function destroyAll() { for (const k in live) { live[k].destroy(); delete live[k
 /* =====================================================================
    Views
    ===================================================================== */
-const VIEWS = [["overview", "Overview"], ["ncr", "NCR"], ["sor", "SOR"], ["stop-work", "Stop Work"], ["incidents", "Incidents"], ["aconex", "Aconex Issues"], ["open-items", "Open Items"], ["checks", "Data Checks"], ["history", "History"], ["settings", "Settings"]];
+const VIEWS = [["overview", "Overview"], ["alerts", "Alerts"], ["ncr", "NCR"], ["sor", "SOR"], ["stop-work", "Stop Work"], ["incidents", "Incidents"], ["aconex", "Aconex Issues"], ["open-items", "Open Items"], ["checks", "Data Checks"], ["history", "History"], ["settings", "Settings"]];
 function route() { const h = location.hash.slice(1); return VIEWS.some(v => v[0] === h) ? h : "overview"; }
 function renderTabs() {
   const cur = route(), nChecks = A.checks.filter(c => c.sev === "warn" && c.items.length).length;
-  const count = { ncr: A.NCR.open, sor: A.SOR.open, "stop-work": A.SWN.open, aconex: S.data.ACX.length ? A.ACX.open : null, "open-items": A.NCR.open + A.SOR.open + A.ACX.open, checks: nChecks };
-  $("#tabs").innerHTML = VIEWS.map(([id, l]) => `<a href="#${id}" ${id === cur ? 'aria-current="page"' : ""}>${l}${count[id] != null && (id !== "checks" || nChecks) ? `<span class="cnt${id === "checks" ? " alert" : ""}">${count[id]}</span>` : ""}</a>`).join("");
+  const count = { ncr: A.NCR.open, sor: A.SOR.open, "stop-work": A.SWN.open, aconex: S.data.ACX.length ? A.ACX.open : null, "open-items": A.NCR.open + A.SOR.open + A.ACX.open, checks: nChecks, alerts: A.alerts.length || null };
+  const aRed = A.alerts.some(a => a.level === "red");
+  $("#tabs").innerHTML = VIEWS.map(([id, l]) => `<a href="#${id}" ${id === cur ? 'aria-current="page"' : ""}>${l}${count[id] != null && (id !== "checks" || nChecks) ? `<span class="cnt${id === "checks" || (id === "alerts" && aRed) ? " alert" : id === "alerts" ? " warn" : ""}">${count[id]}</span>` : ""}</a>`).join("");
 }
 function tile(l, v, s, st = "", go = "", unit = "") {
   const inner = `<span class="l">${l}</span><span class="v">${v}${unit ? `<small>${unit}</small>` : ""}</span><span class="s">${s}</span>`;
@@ -558,7 +710,10 @@ const setF = (k, key, v) => { UI[k][key] = v; render(); };
 /* ---------- overview ---------- */
 function vOverview() {
   const N = A.NCR, R = A.SOR, I = A.INC, W = A.SWN, X = A.ACX, hasX = S.data.ACX.length > 0;
-  return `${header()}
+  const AL = A.alerts, aR = AL.filter(a => a.level === "red").length;
+  const strip = AL.length ? `<section class="astrip"><div class="asum"><b>${AL.length} alert${AL.length > 1 ? "s" : ""}</b> · ${aR} red, ${AL.length - aR} amber <a href="#alerts">See actions →</a></div>
+    <ul>${AL.slice(0, 5).map(a => `<li><span class="pill ${a.level === "red" ? "p-crit" : "p-warn"}">${a.level === "red" ? "Red" : "Amber"}</span> ${esc(a.title)}</li>`).join("")}${AL.length > 5 ? `<li><a href="#alerts">and ${AL.length - 5} more</a></li>` : ""}</ul></section>` : "";
+  return `${header()}${strip}
   <section><h2>This period<small>${perTxt()}</small></h2><div class="tiles">
     ${tile("NCRs issued", N.issuedPer, delta(N.issuedPer, N.issuedPrev), "info", "ncr")}
     ${tile("SORs issued", R.issuedPer, delta(R.issuedPer, R.issuedPrev), "info", "sor")}
@@ -784,8 +939,8 @@ function applyBrand() { $("#brandName").textContent = PROJECT.name ? PROJECT.nam
 function render(keepFocus) {
   A = analyze(); destroyAll(); renderTabs();
   const v = route(), view = $("#view");
-  const map = { overview: [vOverview, afterOverview], ncr: [() => vRegister("NCR"), () => afterRegister("NCR")], sor: [() => vRegister("SOR"), () => afterRegister("SOR")],
-    "stop-work": [vSWN, afterSWN], incidents: [vINC, afterINC], aconex: [vACX, afterACX], "open-items": [vOpen, afterOpen], checks: [vChecks, () => {}], history: [vHistory, afterHistory], settings: [vSettings, afterSettings] };
+  const map = { overview: [vOverview, afterOverview], alerts: [vAlerts, () => wireAlertGo($("#view"))], ncr: [() => vRegister("NCR"), () => afterRegister("NCR")], sor: [() => vRegister("SOR"), () => afterRegister("SOR")],
+    "stop-work": [vSWN, afterSWN], incidents: [vINC, afterINC], aconex: [vACX, afterACX], "open-items": [vOpen, afterOpen], checks: [vChecks, () => {}], history: [vHistory, afterHistory], settings: [() => vSettings() + vRules(), () => { afterSettings(); wireRules(); }] };
   const [html, after] = map[v]; view.innerHTML = html(); after();
   view.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { const g = b.dataset.go; if (g === "ncr" || g === "sor") UI[g.toUpperCase()].st = "open"; location.hash = g; }));
   view.querySelectorAll("[data-act=load]").forEach(b => b.addEventListener("click", () => $("#file").click()));
@@ -822,6 +977,7 @@ async function loadFiles(files) {
   if (hd || !S.from) S.from = addD(S.to, -span);
   render(); snapshot(); persist();
   if (pending.length) { openMapper(pending[0]); return; }
+  openAlertPop();
   toast(notes.join("\n") + (hd ? `\nPeriod set to ${fmt(S.from, {})} – ${fmtL(hd)} (to date from the tracker header).` : ""), 7000);
 }
 
@@ -853,7 +1009,7 @@ function mapperDraw(guess) {
       let i = al.map(a => H.indexOf(a.replace(/\$$/, ""))).find(x => x >= 0) ?? -1;
       if (i < 0 || used.has(i)) i = H.findIndex((h, j) => h && !used.has(j) && kw.some(w => h.includes(w)));
       if (i >= 0) { MAP.sel[f] = i; used.add(i); } } }
-  const sample = i => { for (let r = MAP.hr + 1; r < Math.min(MAP.rows.length, MAP.hr + 30); r++) { const v = (MAP.rows[r] || [])[i]; if (v != null && String(v).trim()) return typeof v === "number" && v > 20000 && v < 80000 && toDate(v) ? fmtL(toDate(v)) : String(v).slice(0, 40); } return ""; };
+  const sample = i => { for (let r = MAP.hr + 1; r < Math.min(MAP.rows.length, MAP.hr + 30); r++) { const v = (MAP.rows[r] || [])[i]; if (v != null && String(v).trim()) return typeof v === "number" && v > 20000 && v < 80000 && toDate(v) ? fmtL(toDate(v)) : typeof v === "string" && toDate(v) ? `${v.slice(0, 24)} → ${fmtL(toDate(v))}` : String(v).slice(0, 40); } return ""; };
   const dataRows = MAP.rows.slice(MAP.hr + 1).filter(r => (r || []).some(c => c != null && String(c).trim())).length;
   $("#mapper").innerHTML = `<div class="mbox"><h3 id="mapT">Match the columns in “${esc(MAP.name)}”</h3>
     <p class="sub">This file was not recognised automatically. Choose which column holds each field. Your choice is saved in this browser, so the same export imports automatically next time.</p>
@@ -884,7 +1040,7 @@ function mapperImport() {
   S.data.ACX = cleanACX(res.rows); S.meta.ACX = { file: MAP.name, sheet: MAP.sheet, missing: [], loaded: new Date().toISOString() };
   if (!S.to) { const all = S.data.ACX.map(r => r.issue).filter(Boolean); S.to = all.length ? new Date(Math.max(...all)) : new Date(); S.from = addD(S.to, -6); }
   const n = S.data.ACX.length, undated = S.data.ACX.filter(r => !r.issue).length;
-  $("#mapper").hidden = true; MAP = null; persist(); location.hash = "aconex"; render(); snapshot();
+  $("#mapper").hidden = true; MAP = null; persist(); location.hash = "aconex"; render(); snapshot(); openAlertPop();
   toast(`Aconex: ${n} issues imported.${undated ? ` ${undated} have no readable raised date (see Data Checks).` : ""} Column matches saved for next time.`, 6000);
 }
 
@@ -1032,6 +1188,7 @@ addEventListener("dragenter", e => { if ([...(e.dataTransfer?.types || [])].incl
 addEventListener("dragleave", () => { if (--dragN <= 0) { dragN = 0; drop.hidden = true; } });
 addEventListener("dragover", e => e.preventDefault());
 addEventListener("drop", e => { e.preventDefault(); dragN = 0; drop.hidden = true; const f = [...(e.dataTransfer?.files || [])].filter(f => /\.xls[xmb]?$/i.test(f.name)); if (f.length) loadFiles(f); });
+addEventListener("keydown", e => { if (e.key === "Escape") { closeAlertPop(); const m = $("#mapper"); if (m && !m.hidden) { m.hidden = true; MAP = null; } } });
 addEventListener("hashchange", () => { render(); scrollTo(0, 0); });
 const rerender = () => { if (A) render(); };
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerender);
@@ -1041,6 +1198,7 @@ applyColmap();
 applyBrand();
 if (!restore()) demo();
 render();
+try { if (!S.demo && A.alerts.length && !sessionStorage.getItem("hse-alerts-shown")) { sessionStorage.setItem("hse-alerts-shown", "1"); openAlertPop(); } } catch (e) {}
 </script>
 
 </body>
