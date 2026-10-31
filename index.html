@@ -177,6 +177,7 @@ tbody tr:hover td{background:var(--surface-2)}
 .shead .filters select{font-size:12px;padding:4px 6px}
 .heat td,.heat th{text-align:center;font-size:12px;padding:6px 6px} .heat td:first-child,.heat th:first-child{text-align:left;white-space:nowrap}
 .hcell{font-variant-numeric:tabular-nums;font-weight:600}
+.lastd{font-size:10.5px;font-weight:500;opacity:.8}
 .hc-g{background:var(--good-bg);color:var(--good)} .hc-a{background:var(--warn-bg);color:color-mix(in srgb,var(--warn) 55%,var(--ink))} .hc-r{background:var(--crit-bg);color:var(--crit)}
 .foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 .drop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(2px)}
@@ -203,7 +204,7 @@ tbody tr:hover td{background:var(--surface-2)}
 </header>
 <div class="wrap"><main id="view"></main>
   <div class="foot">
-    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.30e</span>
+    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.31</span>
     <button class="btn" id="clearBtn" type="button">Clear stored data</button>
   </div>
 </div>
@@ -1166,8 +1167,10 @@ function vCRC() {
   const winF = (L, w) => w === "per" ? L.filter(r => inR(r.date, A.perStart, A.rpt)) : w === "90" ? L.filter(r => inR(r.date, addD(A.rpt, -89), A.rpt)) : w === "13" ? L.filter(r => r.date && r.date >= A.months[0]) : L;
   // heat table
   const heatRows = typF(scope, st.heatType), risks = [...countBy(heatRows, r => r.risk).keys()].sort();
-  const heat = `<div class="tablebox"><table class="heat"><thead><tr><th>Critical risk</th>${A.mLabels.map(l => `<th>${l}</th>`).join("")}<th>13 months</th></tr></thead><tbody>${risks.map(k => { const L = heatRows.filter(r => r.risk === k);
-      return `<tr><td>${esc(k)}</td>${A.months.map(m => { const M = L.filter(r => inR(r.date, m, eom(m))), v = ccComp(M); return `<td class="hcell ${ccCls(v)}" title="${M.length} assessment${M.length === 1 ? "" : "s"}">${v == null ? "" : ccPct(v)}</td>`; }).join("")}<td class="hcell ${ccCls(ccComp(L.filter(r => r.date >= A.months[0])))}"><b>${ccPct(ccComp(L.filter(r => r.date >= A.months[0])))}</b></td></tr>`; }).join("")}</tbody></table></div>`;
+  const heat = `<div class="tablebox"><table class="heat"><thead><tr><th>Critical risk</th>${A.mLabels.map(l => `<th>${l}</th>`).join("")}<th>Last assessment</th></tr></thead><tbody>${risks.map(k => { const L = heatRows.filter(r => r.risk === k);
+      return `<tr><td>${esc(k)}</td>${A.months.map(m => { const M = L.filter(r => inR(r.date, m, eom(m))), v = ccComp(M); return `<td class="hcell ${ccCls(v)}" title="${M.length} assessment${M.length === 1 ? "" : "s"}">${v == null ? "" : ccPct(v)}</td>`; }).join("")}${(() => { const dated = L.filter(r => r.date && r.date <= A.rpt); if (!dated.length) return `<td class="hcell"></td>`;
+        const lastD = new Date(Math.max(...dated.map(r => +r.date))), lastRows = dated.filter(r => +r.date === +lastD), v = ccComp(lastRows);
+        return `<td class="hcell ${ccCls(v)}" title="${lastRows.map(r => r.riskRaw).join(", ")}"><b>${ccPct(v)}</b><div class="lastd">${fmt(lastD)}</div></td>`; })()}</tr>`; }).join("")}</tbody></table></div>`;
   // log
   const logRows = scope.filter(r => (!st.logRisk || r.risk === st.logRisk) && (!st.logType || r.ctype === st.logType || r.ctype === "System & Field") && (!st.logMonth || (r.date && iso(new Date(r.date.getFullYear(), r.date.getMonth(), 1)) === st.logMonth)));
   const monthsPresent = [...new Set(scope.filter(r => r.date).map(r => iso(new Date(r.date.getFullYear(), r.date.getMonth(), 1))))].sort().reverse().map(m => [m, MON[+m.slice(5, 7) - 1] + " " + m.slice(0, 4)]);
@@ -1195,7 +1198,7 @@ function vCRC() {
     <div class="card"><div class="shead"><div><h3>Compliance by critical risk</h3><p class="sub">Lowest first · click a bar to filter the page</p></div><div class="filters">${sel("cc-barWin", "Window", st.barWin, winOpts).replace('<option value="">All</option>', "")}${typ("cc-barType", st.barType)}</div></div><div class="cv tall"><canvas id="cc2" role="img" aria-label="Compliance by critical risk"></canvas></div></div>
     <div class="card"><div class="shead"><div><h3>Non-compliances found per month</h3><p class="sub">By critical risk, top 5 shown</p></div><div class="filters">${typ("cc-ncType", st.ncType)}</div></div><div class="cv tall"><canvas id="cc3" role="img" aria-label="Non-compliances per month"></canvas></div></div>
   </div></section>
-  <section class="card"><div class="shead"><div><h3>Compliance by critical risk and month</h3><p class="sub">Green ${Math.round(CC_GOOD * 100)}% and above · amber ${Math.round(CC_FAIR * 100)}–${Math.round(CC_GOOD * 100) - 1}% · red below ${Math.round(CC_FAIR * 100)}% · blank = not assessed that month</p></div><div class="filters">${typ("cc-heatType", st.heatType)}</div></div>${heat}</section>
+  <section class="card"><div class="shead"><div><h3>Compliance by critical risk and month</h3><p class="sub">Green ${Math.round(CC_GOOD * 100)}% and above · amber ${Math.round(CC_FAIR * 100)}–${Math.round(CC_GOOD * 100) - 1}% · red below ${Math.round(CC_FAIR * 100)}% · blank = not assessed that month · last column = score of the most recent assessment (system and field controls on the same day are combined)</p></div><div class="filters">${typ("cc-heatType", st.heatType)}</div></div>${heat}</section>
   <section><div class="filters" style="margin-bottom:10px"><h2 style="margin:0 auto 0 0">Assessment log</h2>${sel("cc-logRisk", "Critical risk", st.logRisk, uniq(scope, "risk"))}${typ("cc-logType", st.logType)}${sel("cc-logMonth", "Month", st.logMonth, monthsPresent)}</div>
   ${table("t-CC", cols, logRows, st)}</section>`;
 }
