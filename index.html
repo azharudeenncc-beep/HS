@@ -60,10 +60,10 @@ button,input,select{font:inherit;color:inherit}
 .btn[disabled]{opacity:.5;cursor:default}
 .tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1 1 100%;min-width:0}
 .tabs::-webkit-scrollbar{display:none}
-.tabs a{flex:none;padding:10px 12px 9px;color:var(--muted);text-decoration:none;font-weight:500;font-size:13px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a{flex:none;padding:10px 12px 9px;color:var(--muted);text-decoration:none;font-weight:700;font-size:13.5px;letter-spacing:.01em;border-bottom:2px solid transparent;white-space:nowrap}
 .tabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
 .tabs a .cnt{font:500 11px var(--mono);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:0 6px;margin-left:5px}
-.tabs a .cnt.alert{background:var(--crit-bg);border-color:transparent;color:var(--crit)}
+.tabs a .cnt.cnt-red{background:var(--crit-bg);border-color:transparent;color:var(--crit)}
 
 main{padding-block:18px 40px;display:grid;gap:22px}
 .banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 14px;border-radius:var(--r);background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);font-size:13px}
@@ -151,7 +151,7 @@ tbody tr:hover td{background:var(--surface-2)}
 .req{font-style:normal;font-weight:500;font-size:11px;color:var(--crit);margin-left:4px}
 .merr{margin:0;color:var(--crit);font-weight:600}
 .mact{display:flex;justify-content:flex-end;gap:8px}
-.tabs a .cnt.warn{background:var(--warn-bg);border-color:transparent;color:color-mix(in srgb,var(--warn) 55%,var(--ink))}
+.tabs a .cnt.cnt-amb{background:var(--warn-bg);border-color:transparent;color:color-mix(in srgb,var(--warn) 55%,var(--ink))}
 .astrip{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--crit);border-radius:var(--r);padding:10px 14px;display:grid;gap:6px}
 .astrip .asum{font-size:13px} .astrip .asum a{color:var(--accent);margin-left:8px;font-weight:600}
 .astrip ul{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:13px}
@@ -179,6 +179,8 @@ tbody tr:hover td{background:var(--surface-2)}
 .hcell{font-variant-numeric:tabular-nums;font-weight:600}
 .lastd{font-size:10.5px;font-weight:500;opacity:.8}
 .hc-g{background:var(--good-bg);color:var(--good)} .hc-a{background:var(--warn-bg);color:color-mix(in srgb,var(--warn) 55%,var(--ink))} .hc-r{background:var(--crit-bg);color:var(--crit)}
+.meta .clr{order:9;margin-left:auto;font-size:12px;padding:4px 10px;color:var(--muted)}
+.meta .clr.armed{border-color:var(--crit);color:var(--crit);background:var(--crit-bg)}
 .foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 .drop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(2px)}
 .drop div{border:2px dashed var(--accent);border-radius:12px;padding:40px 48px;background:var(--surface);text-align:center;font:700 20px var(--display);font-stretch:85%;max-width:calc(100% - 32px)}
@@ -204,8 +206,8 @@ tbody tr:hover td{background:var(--surface-2)}
 </header>
 <div class="wrap"><main id="view"></main>
   <div class="foot">
-    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.31</span>
-    <button class="btn" id="clearBtn" type="button">Clear stored data</button>
+    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.31b</span>
+    <button class="btn" id="clearBtn" type="button" title="Clears the data on every tab and the History. Settings are kept.">Clear all stored data</button>
   </div>
 </div>
 <div class="drop" id="drop" hidden><div>Drop tracker files<span>NCR / SOR / Stop Work tracker, incident log, Aconex issues export or critical risk workbook</span></div></div>
@@ -769,7 +771,7 @@ function renderTabs() {
   const cur = route(), nChecks = A.checks.filter(c => c.sev === "warn" && c.items.length).length;
   const count = { ncr: A.NCR.open, sor: A.SOR.open, "stop-work": A.SWN.open, aconex: S.data.ACX.length ? A.ACX.open : null, cra: S.data.CRA.length && !S.data.CC.length ? A.CRA.open : null, "open-items": A.NCR.open + A.SOR.open + A.ACX.open, checks: nChecks, alerts: A.alerts.length || null };
   const aRed = A.alerts.some(a => a.level === "red");
-  $("#tabs").innerHTML = VIEWS.map(([id, l]) => `<a href="#${id}" ${id === cur ? 'aria-current="page"' : ""}>${l}${count[id] != null && (id !== "checks" || nChecks) ? `<span class="cnt${id === "checks" || (id === "alerts" && aRed) ? " alert" : id === "alerts" ? " warn" : ""}">${count[id]}</span>` : ""}</a>`).join("");
+  $("#tabs").innerHTML = VIEWS.map(([id, l]) => `<a href="#${id}" ${id === cur ? 'aria-current="page"' : ""}>${l}${count[id] != null && (id !== "checks" || nChecks) ? `<span class="cnt${id === "checks" || (id === "alerts" && aRed) ? " cnt-red" : id === "alerts" ? " cnt-amb" : ""}">${count[id]}</span>` : ""}</a>`).join("");
 }
 function tile(l, v, s, st = "", go = "", unit = "") {
   const inner = `<span class="l">${l}</span><span class="v">${v}${unit ? `<small>${unit}</small>` : ""}</span><span class="s">${s}</span>`;
@@ -780,7 +782,9 @@ function delta(now, prev) { const d = now - prev; const sign = d > 0 ? "+" : d <
 function header() {
   const src = Object.keys(DATASETS).filter(k => S.meta[k]).map(k => { const m = S.meta[k]; return `<span class="chip"><b>${DATASETS[k].label}</b> ${S.data[k].length}<i>${esc(m.file || "")}${m.headerDate ? " · " + fmt(m.headerDate) : ""}</i></span>`; }).join("");
   const banner = S.demo ? `<div class="banner"><span><b>Demo data.</b> These figures are fictional examples. Load your NCR / SOR tracker, the contractor incident log, the Aconex issues export and the CRA register to see the real position.</span><button class="btn" type="button" data-act="load">Load trackers</button></div>` : "";
-  return `${banner}<div class="meta"><span>Period <b>${perTxt()}</b> (${A.per} day${A.per > 1 ? "s" : ""}) · ageing measured to ${fmtL(A.rpt)}</span>${src}</div>`;
+  const ck = { ncr: "NCR", sor: "SOR", "stop-work": "SWN", incidents: "INC", aconex: "ACX", cra: S.data.CC.length && UI.craView !== "register" ? "CC" : "CRA" }[route()];
+  const clr = ck && S.data[ck] && S.data[ck].length ? `<button class="btn clr" type="button" data-clear-ds="${ck}">Clear this tab's data</button>` : "";
+  return `${banner}<div class="meta">${clr}<span>Period <b>${perTxt()}</b> (${A.per} day${A.per > 1 ? "s" : ""}) · ageing measured to ${fmtL(A.rpt)}</span>${src}</div>`;
 }
 const card = (id, h, sub, tall) => `<div class="card"><h3>${h}</h3><p class="sub">${sub}</p><div class="cv${tall ? " tall" : ""}"><canvas id="${id}" role="img" aria-label="${esc(h)}"></canvas></div></div>`;
 
@@ -1282,6 +1286,10 @@ function render(keepFocus) {
   const [html, after] = map[v]; view.innerHTML = html(); after();
   view.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { const g = b.dataset.go; if (g === "ncr" || g === "sor") UI[g.toUpperCase()].st = "open"; location.hash = g; }));
   view.querySelectorAll("[data-setto]").forEach(b => b.addEventListener("click", () => { const d = fromIso(b.dataset.setto), span = days(A.rpt, A.perStart); S.to = d; S.from = addD(d, -span); persist(); render(); }));
+  view.querySelectorAll("[data-clear-ds]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.clearDs, label = DATASETS[k] ? DATASETS[k].label : k;
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = `Click again to clear ${label} data`; b.classList.add("armed"); setTimeout(() => { if (b.isConnected) { b.dataset.armed = ""; b.textContent = "Clear this tab's data"; b.classList.remove("armed"); } }, 4000); return; }
+    S.data[k] = []; delete S.meta[k]; delete PROF[k]; if (UI[k]) { UI[k].q = ""; if (UI[k].f) UI[k].f = {}; for (const x of ["cat", "who", "sev", "theme", "grp", "risk", "ctype", "contractor", "shift", "logRisk", "logType", "logMonth"]) if (x in UI[k]) UI[k][x] = ""; }
+    persist(); render(); toast(`${label} data cleared. Other tabs, History and Settings are unchanged.`); }));
   view.querySelectorAll("[data-act=load]").forEach(b => b.addEventListener("click", () => $("#file").click()));
   if (keepFocus) { const el = document.getElementById(keepFocus); if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (e) {} } }
   $("#from").value = iso(A.perStart); $("#to").value = iso(A.rpt); $("#from").max = iso(A.rpt); $("#to").min = iso(A.perStart);
@@ -1556,8 +1564,8 @@ $("#preset").addEventListener("change", e => { const v = e.target.value, to = A.
   if (v !== "prevmonth") S.to = to; persist(); render(); });
 if (!window.claude) { const pb = $("#printBtn"); pb.hidden = false; pb.addEventListener("click", () => window.print()); }
 let clearArm = 0; $("#clearBtn").addEventListener("click", e => { const b = e.currentTarget;
-  if (Date.now() - clearArm < 4000) { store("hse-dash-v1"); store(HKEY); demo(); render(); b.textContent = "Clear stored data"; clearArm = 0; toast("Stored data and history cleared. Showing demo data."); return; }
-  clearArm = Date.now(); b.textContent = "Click again to clear"; setTimeout(() => { if (Date.now() - clearArm >= 3900) b.textContent = "Clear stored data"; }, 4000); });
+  if (Date.now() - clearArm < 4000) { store("hse-dash-v1"); store(HKEY); demo(); render(); b.textContent = "Clear all stored data"; clearArm = 0; toast("Stored data and history cleared. Showing demo data."); return; }
+  clearArm = Date.now(); b.textContent = "Click again to clear"; setTimeout(() => { if (Date.now() - clearArm >= 3900) b.textContent = "Clear all stored data"; }, 4000); });
 let dragN = 0; const drop = $("#drop");
 addEventListener("dragenter", e => { if ([...(e.dataTransfer?.types || [])].includes("Files")) { dragN++; drop.hidden = false; } });
 addEventListener("dragleave", () => { if (--dragN <= 0) { dragN = 0; drop.hidden = true; } });
