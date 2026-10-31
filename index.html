@@ -206,7 +206,7 @@ tbody tr:hover td{background:var(--surface-2)}
 </header>
 <div class="wrap"><main id="view"></main>
   <div class="foot">
-    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.31b</span>
+    <span>Your tracker data is read and stored only in this browser. Nothing is uploaded.</span><span class="mono" title="App version">v2026.10.31c</span>
     <button class="btn" id="clearBtn" type="button" title="Clears the data on every tab and the History. Settings are kept.">Clear all stored data</button>
   </div>
 </div>
@@ -955,23 +955,62 @@ function afterINC() { const scope = A.view.scope;
 /* ---------- shared pieces for Aconex and Critical Risk (filters come from the file's own columns) ---------- */
 const fv = v => v == null ? "" : txt(v);
 // Column profile: values per column, with multi-value cells ("A; B; C") split into separate values
-const SPLIT = /\s*(?:;|\||\n|\r|,\s(?=[A-Z]))\s*/, SPLIT_NAMES = /\s*(?:;|\||\n|\r)\s*/;
-const splitter = h => /by$|by\b|name|user|person|assign|owner|author/i.test(h) ? SPLIT_NAMES : SPLIT;
-const EXTRA_KEY = "hse-dash-extra-filters";
-let EXTRA = load(EXTRA_KEY) || {};
+// Combined values: a cell such as "Working at Height, PPE" is split into the separate category names.
+// The app learns the names from the file: a piece counts as a real name when it appears on its own in some cell,
+// or recurs in several combined cells. Explicit separators (; | new line) always split. Settings per column can force it on or off.
+const SEP_STRONG = /\s*(?:;|\||[\r\n]+)\s*/, SEP_SOFT = [/\s*,\s*/, /\s+\/\s+|\s*\/\s*(?=[A-Z])/, /\s+[-–]\s+/, /\s+&\s+(?=[A-Z])/];
+const NAME_COL = /by$|by\b|name|user|person|assign|owner|author|title|description|comment|remark/i;
+const SPLIT_KEY = "hse-dash-split", EXTRA_KEY = "hse-dash-extra-filters";
+let SPLITPREF = load(SPLIT_KEY) || {}, EXTRA = load(EXTRA_KEY) || {};
 const PROF = {};
+function learnSplits(h, wholeMap, force) {
+  const map = new Map(); if (force === false) return map;
+  const TOK = /(\s*[,;|]\s*|\s*[\r\n]+\s*|\s+\/\s+|\s*\/\s*(?=[A-Za-z])|\s+[-–]\s+|\s+&\s+)/;
+  const pieces = v => { const t = v.split(TOK); return { words: t.filter((_, i) => i % 2 === 0).map(x => x.trim()), seps: t.filter((_, i) => i % 2 === 1) }; };
+  const dict = new Map(); for (const v of wholeMap.keys()) dict.set(v.toLowerCase(), v);
+  // 1. a value is a combination when it can be cut into two or more OTHER values found in the column (longest names first)
+  const segment = v => { const { words, seps } = pieces(v), n = words.length; if (n < 2) return null; const memo = new Map(), self = v.toLowerCase();
+    const go = i => { if (i === n) return []; if (memo.has(i)) return memo.get(i); let res = null;
+      for (let j = n - 1; j >= i && !res; j--) { let cand = words[i]; for (let x = i; x < j; x++) cand += seps[x] + words[x + 1]; const lc = cand.trim().toLowerCase();
+        if (lc !== self && dict.has(lc)) { const rest = go(j + 1); if (rest) res = [dict.get(lc), ...rest]; } }
+      memo.set(i, res); return res; };
+    return go(0); };
+  const raw = new Map();
+  for (const v of wholeMap.keys()) {
+    const strong = v.split(SEP_STRONG).map(x => x.trim()).filter(Boolean);
+    if (strong.length > 1) { raw.set(v, strong); continue; }
+    if (NAME_COL.test(h) && !force) continue;
+    const seg = segment(v); if (seg && seg.length > 1) raw.set(v, seg);
+  }
+  // 2. single names = values that are not combinations
+  const atoms = new Map(); for (const v of wholeMap.keys()) if (!raw.has(v)) atoms.set(v.toLowerCase(), v);
+  // 3. names only ever chosen together with others: split on commas / semicolons when at least one piece is a known single name
+  for (const v of wholeMap.keys()) { if (raw.has(v) || (NAME_COL.test(h) && !force)) continue;
+    const ps = v.split(/\s*[,;]\s*/).map(x => x.trim()).filter(Boolean);
+    if (ps.length > 1 && ps.every(p => p.length <= 60) && (force || ps.some(p => atoms.has(p.toLowerCase())))) raw.set(v, ps);
+    else if (force) { const w = pieces(v).words.filter(Boolean); if (w.length > 1) raw.set(v, w); } }
+  // 4. expand until only single names remain, with one spelling per name
+  const canon = p => atoms.get(p.toLowerCase()) || dict.get(p.toLowerCase()) || p, seen = new Set();
+  const expand = p => { const key = dict.get(p.toLowerCase()) || p; if (!raw.has(key) || seen.has(key)) return [canon(p)]; seen.add(key); const out = raw.get(key).flatMap(expand); seen.delete(key); return out; };
+  for (const v of raw.keys()) map.set(v, [...new Set(expand(v))]);
+  return map;
+}
 function profile(k, rows) {
-  const sig = rows.length + ":" + (S.meta[k] && S.meta[k].loaded); if (PROF[k] && PROF[k].sig === sig) return PROF[k];
+  const sig = rows.length + ":" + (S.meta[k] && S.meta[k].loaded) + ":" + JSON.stringify(SPLITPREF[k] || {}); if (PROF[k] && PROF[k].sig === sig) return PROF[k];
   const m = S.meta[k] || {}, skip = new Set(Object.entries(m.cols || {}).filter(([f]) => GEN_SKIP.includes(f)).map(([, h]) => h)), cols = {};
-  for (const r of rows) for (const h in (r._x || {})) { const raw = fv(r._x[h]); if (!raw) continue; const c = cols[h] = cols[h] || { filled: 0, whole: new Map(), parts: new Map(), multi: 0 };
-    c.filled++; c.whole.set(raw, (c.whole.get(raw) || 0) + 1); const parts = raw.split(splitter(h)).filter(Boolean); if (parts.length > 1) c.multi++; for (const p of parts) c.parts.set(p, (c.parts.get(p) || 0) + 1); }
+  for (const r of rows) for (const h in (r._x || {})) { const raw = fv(r._x[h]); if (!raw) continue; const c = cols[h] = cols[h] || { filled: 0, whole: new Map() }; c.filled++; c.whole.set(raw, (c.whole.get(raw) || 0) + 1); }
   const out = { sig, skip, cols: {}, order: (m.headers || Object.keys(cols)).filter(h => cols[h]) };
-  for (const h in cols) { const c = cols[h], isMulti = c.multi >= Math.max(2, c.filled * 0.05) && c.parts.size < c.whole.size, n = isMulti ? c.parts.size : c.whole.size;
-    out.cols[h] = { filled: c.filled, multi: isMulti, distinct: n, auto: !skip.has(h) && n >= 2 && n <= 80 && c.filled >= Math.min(3, rows.length),
+  for (const h in cols) { const c = cols[h], pref = (SPLITPREF[k] || {})[h], splits = learnSplits(h, c.whole, pref);
+    const multiCells = [...c.whole.entries()].filter(([v]) => splits.has(v)).reduce((a, [, n]) => a + n, 0);
+    const isMulti = pref === true || (pref !== false && multiCells >= 2);
+    const parts = new Set(); for (const v of c.whole.keys()) for (const p of (isMulti && splits.get(v)) || [v]) parts.add(p);
+    const n = parts.size;
+    out.cols[h] = { filled: c.filled, multi: isMulti, splits: isMulti ? splits : new Map(), multiCells: isMulti ? multiCells : 0, combos: isMulti ? [...c.whole.keys()].filter(v => splits.has(v)).length : 0, distinct: n, wholeDistinct: c.whole.size, pref,
+      auto: !skip.has(h) && n >= 2 && n <= 80 && c.filled >= Math.min(3, rows.length),
       why: skip.has(h) ? "used for a main field" : n < 2 ? "only one value" : n > 80 ? `${n} different values` : c.filled < 3 ? "almost empty" : "" }; }
   return PROF[k] = out;
 }
-function cellVals(k, r, h) { const raw = fv((r._x || {})[h]); if (!raw) return []; const P = PROF[k]; return P && P.cols[h] && P.cols[h].multi ? raw.split(splitter(h)).filter(Boolean) : [raw]; }
+function cellVals(k, r, h) { const raw = fv((r._x || {})[h]); if (!raw) return []; const c = PROF[k] && PROF[k].cols[h]; return c && c.multi && c.splits.has(raw) ? c.splits.get(raw) : [raw]; }
 function autoCols(k, rows) { const P = profile(k, rows), extra = (EXTRA[k] || []).filter(h => P.cols[h]);
   return [...P.order.filter(h => P.cols[h].auto), ...extra.filter(h => !P.cols[h].auto)]; }
 // Rows repeated once per value, so multi-value columns count each value
@@ -1013,11 +1052,16 @@ function readPanel(k, rows, labels, dateF) {
     return `<tr><td>${l}</td><td><span class="mono">${esc(h)}</span></td><td>${info}</td></tr>`; }).join("");
   return `<details class="card readp" id="read-${k}"><summary><b>How this file was read</b> · ${esc(m.file || "")}${m.sheet ? ` · sheet “${esc(m.sheet)}”` : ""}${m.hr != null ? ` · header row ${m.hr + 1}` : ""}</summary>
     <div class="tablebox" style="margin-top:10px"><table><thead><tr><th>Field</th><th>Column in your file</th><th>What was read</th></tr></thead><tbody>${lines}</tbody></table></div>
-    ${(P => `<h3 style="margin:14px 0 6px;font-size:13px">All columns in the file</h3><div class="tablebox"><table><thead><tr><th>Column</th><th>Rows filled</th><th>Different values</th><th>Shown as filter</th></tr></thead><tbody>
-      ${P.order.map(h => { const c = P.cols[h]; return `<tr><td><span class="mono">${esc(h)}</span></td><td class="n">${c.filled}</td><td class="n">${c.distinct}${c.multi ? " (split)" : ""}</td><td>${c.auto ? "Yes" : (EXTRA[k] || []).includes(h) ? "Yes (added)" : `No · ${esc(c.why)}`}</td></tr>`; }).join("")}</tbody></table></div>`)(profile(k, rows))}
+    ${(P => `<h3 style="margin:14px 0 6px;font-size:13px">All columns in the file</h3><div class="tablebox"><table><thead><tr><th>Column</th><th>Rows filled</th><th>Different values</th><th>Split combined values</th><th>Shown as filter</th></tr></thead><tbody>
+      ${P.order.map(h => { const c = P.cols[h]; return `<tr><td><span class="mono">${esc(h)}</span></td><td class="n">${c.filled}</td><td class="n">${c.distinct}${c.multi ? ` <span class="fsum">(${c.wholeDistinct} as written)</span>` : ""}</td>
+        <td><select data-split="${esc(h)}" aria-label="Split combined values in ${esc(h)}"><option value="" ${c.pref == null ? "selected" : ""}>Automatic${c.pref == null ? (c.multi ? " · split" : " · not split") : ""}</option><option value="1" ${c.pref === true ? "selected" : ""}>Always split</option><option value="0" ${c.pref === false ? "selected" : ""}>Never split</option></select>
+        ${c.multi ? `<div class="fsum">${c.multiCells} issues with ${c.combos} combinations</div>` : ""}</td>
+        <td>${c.auto ? "Yes" : (EXTRA[k] || []).includes(h) ? "Yes (added)" : `No · ${esc(c.why)}`}</td></tr>`; }).join("")}</tbody></table></div>`)(profile(k, rows))}
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px"><button class="btn" type="button" data-rematch="${k}">Choose columns again</button><span class="fsum">Then load the file again; the column panel will open.</span></div></details>`;
 }
-function wireRead(k) { document.querySelectorAll(`[data-rematch="${k}"]`).forEach(b => b.addEventListener("click", () => { FORCE_MAP = k; $("#file").click(); })); }
+function wireRead(k) { document.querySelectorAll(`#read-${k} [data-split]`).forEach(el => el.addEventListener("change", () => { const h = el.dataset.split; SPLITPREF[k] = SPLITPREF[k] || {};
+    if (el.value === "") delete SPLITPREF[k][h]; else SPLITPREF[k][h] = el.value === "1"; store(SPLIT_KEY, SPLITPREF); delete PROF[k]; UI[k].f = {}; render(); document.getElementById(`read-${k}`)?.setAttribute("open", ""); }));
+ document.querySelectorAll(`[data-rematch="${k}"]`).forEach(b => b.addEventListener("click", () => { FORCE_MAP = k; $("#file").click(); })); }
 let FORCE_MAP = null;
 // Data imported by an older version has no copy of the file's columns, so filters, trends and date checks cannot work until the file is loaded again
 function staleNote(k, label) { const rows = S.data[k]; if (S.demo || !rows.length || rows.some(r => r._x && Object.keys(r._x).length)) return "";
@@ -1033,7 +1077,7 @@ function trendSection(k, scope, cols, noun) {
     return `<tr data-trv="${esc(v)}" style="cursor:pointer"><td>${esc(v)}</td><td class="n">${now}</td><td class="n">${prev}</td><td>${arrow}</td><td class="n">${d90}</td><td class="n">${tot}</td><td class="n">${open}</td></tr>`; };
   const blank = cnt(rows, r => r.issue >= m13 && key(r) === "(blank)");
   const multi = PROF[k] && PROF[k].cols[h] && PROF[k].cols[h].multi;
-  return `<section class="card"><h3>Trend by ${bySel(k, "tr", cols, "Trend column")}</h3><p class="sub">${noun} per month by ${esc(h)}, top 5 shown${multi ? " · cells with several values are counted under each value" : ""}${blank ? ` · ${blank} with no ${esc(h)} not shown` : ""} · click a bar or a row to filter the whole tab</p>
+  return `<section class="card"><h3>Trend by ${bySel(k, "tr", cols, "Trend column")}</h3><p class="sub">${noun} per month by ${esc(h)}, top 5 shown${multi ? ` · issues with several ${esc(h)} values are counted under each one, so the category totals add up to more than the number of issues` : ""}${blank ? ` · ${blank} with no ${esc(h)} not shown` : ""} · click a bar or a row to filter the whole tab</p>
     <div class="cv tall"><canvas id="tr-${k}" role="img" aria-label="Trend by ${esc(h)}"></canvas></div>
     <div class="tablebox" style="margin-top:12px"><table><thead><tr><th>${esc(h)}</th><th>This period</th><th>Previous ${A.per} days</th><th>Change</th><th>Last 90 days</th><th>Last 13 months</th><th>Open now</th></tr></thead>
     <tbody>${vals.map(line).join("") || `<tr><td colspan="7" style="color:var(--muted)">No dated items for this column.</td></tr>`}</tbody></table></div></section>`;
